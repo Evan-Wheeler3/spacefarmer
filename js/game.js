@@ -14,6 +14,8 @@ import { sellValue, offlineEarnings, droneIncomePerMinute, sectorUnlocked } from
 import { money, fmt, pick, clamp, TAU } from './util.js';
 import { P_GLOW } from './particles.js';
 import { EnemySystem } from './enemies.js';
+import { PlanetSystem } from './planet.js';
+import { renderResearch, renderStarMap, goalCard } from './ui/research.js';
 
 const STEP = 1 / 60;
 
@@ -32,7 +34,11 @@ export class Game {
     this.settings = this.save ? this.save.settings : newSave().settings;
     this.hangar = new Hangar(this);
     this.enemySystem = new EnemySystem(this);
-    this.systems.push(this.enemySystem);
+    this.planetSystem = new PlanetSystem(this);
+    this.systems.push(this.enemySystem, this.planetSystem);
+    this.hangar.addTab('research', 'Research', (c) => renderResearch(this, c), 'shipyard');
+    this.hangar.addTab('map', 'Star Map', (c) => renderStarMap(this, c), 'research');
+    this.goalCard = () => goalCard(this);
     this.stars = new Starfield(SECTORS[this.save ? this.save.sector : 0].bg, 7);
     Input.init(canvas);
     addEventListener('resize', () => this.resize());
@@ -202,6 +208,15 @@ export class Game {
     this.persist();
   }
 
+  jump(i) {
+    if (!sectorUnlocked(i, this.save)) return;
+    this.save.sector = i;
+    this.world = new World(i, this, 1234 + i);
+    this.sfx('jump');
+    toast(`Jumped to ${SECTORS[i].name}`, 'good');
+    this.enterHangar('map');
+  }
+
   launch() {
     const design = Design.fromJSON(this.save.design);
     const a = analyze(design, this.save.upgrades);
@@ -319,7 +334,14 @@ export class Game {
 
   update(dt) {
     this.time += dt;
-    if (this.save && this.state !== 'title') this.save.stats.playTime += dt;
+    if (this.save && this.state !== 'title') {
+      this.save.stats.playTime += dt;
+      const dpm = droneIncomePerMinute(this.save.upgrades);
+      if (dpm > 0 && this.state !== 'paused') {
+        this._drone = (this._drone || 0) + (dpm / 60) * dt;
+        if (this._drone >= 1) { const n = Math.floor(this._drone); this._drone -= n; this.save.credits += n; this.save.stats.earned += n; if (this.state === 'hangar' && Math.random() < 0.02) this.hangar.updateCredits(); }
+      }
+    }
     if (this.state === 'title') {
       this.titleWorld.update(dt, null);
       this.cam.override = { x: Math.cos(this.time * 0.05) * 900, y: Math.sin(this.time * 0.05) * 900, zoom: 0.8 };
@@ -335,6 +357,7 @@ export class Game {
       return;
     }
     if (this.state !== 'flight' && this.state !== 'cinematic') return;
+    if (this.state === 'flight' && document.querySelector('.modal-back')) return; // dialogs pause flight
     const ship = this.ship;
     this.trip.time += dt;
 
@@ -402,6 +425,7 @@ export class Game {
     const ship = this.ship;
     drawFlightHud(ctx, this, this.W, this.H);
     edgeArrow(ctx, this.cam, this.world.station.x, this.world.station.y, '#7df9ff', 'OUTPOST');
+    if (this.planet && this.planet.p && !this.planet.p.destroyed) edgeArrow(ctx, this.cam, this.planet.p.x, this.planet.p.y, '#ff3cac', this.planet.p.name.toUpperCase());
     // top-left: credits + cargo value
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     ctx.font = '700 22px "Trebuchet MS", sans-serif';

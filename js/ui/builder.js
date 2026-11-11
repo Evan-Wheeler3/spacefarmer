@@ -244,6 +244,7 @@ export class Builder {
     if (!chk.ok) { if (loud && chk.reason !== 'Cell occupied') this.deny(chk.reason); return false; }
     if (this.save.credits < cost) { if (loud) this.deny('Not enough credits — need ' + money(cost)); return false; }
     this.save.credits -= cost;
+    this.save.stats.partsBought = (this.save.stats.partsBought || 0) + 1;
     this.design.add({ part: id, x, y, rot, hp: 1 });
     this.stroke && (this.stroke.changed = true);
     const c = entryCenter({ part: id, x, y, rot });

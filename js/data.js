@@ -78,7 +78,7 @@ export const PARTS = {
   gyro: {
     name: 'Gyroscope', cat: 'propulsion', w: 1, h: 1, mass: 1.5, cost: 70, hp: 40,
     desc: 'Spins a heavy wheel so the rest of you can spin on purpose.',
-    torque: 60000, powerUse: 2.5, unlock: null,
+    torque: 90000, powerUse: 2.5, unlock: null,
   },
   reactor: {
     name: 'Reactor', cat: 'power', w: 1, h: 1, mass: 2.6, cost: 110, hp: 55,
@@ -132,7 +132,7 @@ export const PARTS = {
     shield: 70, shieldRegen: 9, powerUse: 4, unlock: 'shields',
   },
   cracker: {
-    name: 'Planet Cracker', cat: 'doomsday', w: 3, h: 3, mass: 45, cost: 60000, hp: 900,
+    name: 'Planet Cracker', cat: 'doomsday', w: 3, h: 3, mass: 45, cost: 80000, hp: 900,
     desc: 'Hold [C] near a planet. Requires a lot of power, nerve, and paperwork.',
     cracker: { chargeTime: 14, power: 28, range: 1300 }, directional: true, muzzle: true, unlock: 'cracker',
   },
@@ -178,7 +178,7 @@ export const ENEMIES = {
 // are implemented in enemies.js (spread, ring, spawn, charge, beam, missiles).
 export const BOSSES = {
   grudge: {
-    name: 'Foreman Grudge', title: 'Disputes your mining rights', hp: 900, radius: 60, speed: 90,
+    name: 'Foreman Grudge', title: 'Disputes your mining rights', hp: 1500, radius: 60, speed: 90,
     accel: 90, turn: 0.8, color: '#ff8c42', bounty: 1200, standoff: 340,
     phases: [
       { until: 0.5, attacks: [{ type: 'spread', count: 5, arc: 0.7, damage: 6, speed: 380, every: 1.6 },
@@ -189,8 +189,8 @@ export const BOSSES = {
     ],
   },
   auditor: {
-    name: 'The Auditor', title: 'Found some irregularities', hp: 2600, radius: 64, speed: 110,
-    accel: 110, turn: 1, color: '#ffd23f', bounty: 4200, standoff: 420,
+    name: 'The Auditor', title: 'Found some irregularities', hp: 7000, radius: 64, speed: 110,
+    accel: 110, turn: 1, color: '#ffd23f', bounty: 5000, standoff: 420,
     phases: [
       { until: 0.6, attacks: [{ type: 'beam', damage: 26, length: 700, sweep: 1.3, duration: 2.4, every: 6 },
                               { type: 'spawn', enemy: 'gunboat', count: 1, every: 12 }] },
@@ -200,8 +200,8 @@ export const BOSSES = {
     ],
   },
   matriarch: {
-    name: 'Matriarch Vexa', title: 'Owns this rock and all rocks like it', hp: 6500, radius: 70,
-    speed: 140, accel: 140, turn: 1.2, color: '#7bd389', bounty: 11000, standoff: 300,
+    name: 'Matriarch Vexa', title: 'Owns this rock and all rocks like it', hp: 17000, radius: 70,
+    speed: 140, accel: 140, turn: 1.2, color: '#7bd389', bounty: 14000, standoff: 300,
     phases: [
       { until: 0.5, attacks: [{ type: 'spawn', enemy: 'leech', count: 3, every: 8 },
                               { type: 'ring', count: 20, damage: 12, speed: 320, every: 2.8 }] },
@@ -212,7 +212,7 @@ export const BOSSES = {
   },
   mildred: {
     name: 'Dreadnought Mildred', title: 'Has been doing this since before you were a schematic',
-    hp: 16000, radius: 84, speed: 80, accel: 80, turn: 0.6, color: '#5bc0eb', bounty: 28000, standoff: 460,
+    hp: 42000, radius: 84, speed: 80, accel: 80, turn: 0.6, color: '#5bc0eb', bounty: 35000, standoff: 460,
     phases: [
       { until: 0.66, attacks: [{ type: 'missiles', count: 4, damage: 22, speed: 320, turn: 2.4, every: 4 },
                                { type: 'spread', count: 7, arc: 0.8, damage: 16, speed: 500, every: 2 }] },
@@ -342,11 +342,11 @@ export const UPGRADES = [
   { id: 'licRust',  branch: 'Licenses', name: 'Rust Belt License', desc: 'Jump access to the Rust Belt.',
     cost: [900], effect: {}, requires: [], requiresBoss: 'grudge' },
   { id: 'licGlass', branch: 'Licenses', name: 'Glass Reach License', desc: 'Jump access to the Glass Reach.',
-    cost: [6000], effect: {}, requires: ['licRust'], requiresBoss: 'auditor' },
+    cost: [8000], effect: {}, requires: ['licRust'], requiresBoss: 'auditor' },
   { id: 'licPale',  branch: 'Licenses', name: 'Deep Pale License', desc: 'Jump access to the Deep Pale.',
-    cost: [25000], effect: {}, requires: ['licGlass'], requiresBoss: 'matriarch' },
+    cost: [30000], effect: {}, requires: ['licGlass'], requiresBoss: 'matriarch' },
   { id: 'licGorvox', branch: 'Licenses', name: 'Gorvox Clearance', desc: 'Jump access to the Gorvox System. Nobody asks why.',
-    cost: [60000], effect: {}, requires: ['licPale'], requiresBoss: 'mildred' },
+    cost: [75000], effect: {}, requires: ['licPale'], requiresBoss: 'mildred' },
   // Doomsday
   { id: 'cracker',  branch: 'Doomsday', name: 'Planet Cracker Schematics', desc: 'Unlocks the Planet Cracker. It is exactly what it sounds like.',
     cost: [40000], effect: {}, requires: ['licPale', 'fusion'] },
@@ -381,6 +381,26 @@ export const PRESETS = {
     ['thruster', -2, 0, 1], ['battery', -1, 0, 0], ['core', 0, 0, 0], ['battery', 1, 0, 0], ['thruster', 2, 0, 3],
     ['gyro', -1, 1, 0], ['fuelTank', 0, 1, 0], ['gyro', 1, 1, 0],
     ['thruster', -1, 2, 0], ['thruster', 0, 2, 0], ['thruster', 1, 2, 0],
+  ] },
+  excavator: { name: 'Excavator', desc: 'Three lasers, shields, and enough guns to finish arguments. Needs a 9×9 frame.', cells: [
+    ['laser', -2, -4, 0], ['laser', 0, -4, 0], ['laser', 2, -4, 0],
+    ['thruster', -3, -3, 2], ['armor', -2, -3, 0], ['cargo', -1, -3, 0], ['turret', 0, -3, 0], ['cargo', 1, -3, 0], ['armor', 2, -3, 0], ['thruster', 3, -3, 2],
+    ['turret', -3, -2, 0], ['cargo', -2, -2, 0], ['cargo', -1, -2, 0], ['reactor', 0, -2, 0], ['cargo', 1, -2, 0], ['cargo', 2, -2, 0], ['turret', 3, -2, 0],
+    ['thruster', -4, -1, 1], ['cargo', -3, -1, 0], ['cargo', -2, -1, 0], ['battery', -1, -1, 0], ['shield', 0, -1, 0], ['battery', 1, -1, 0], ['cargo', 2, -1, 0], ['cargo', 3, -1, 0], ['thruster', 4, -1, 3],
+    ['gyro', -3, 0, 0], ['fuelTank', -2, 0, 0], ['reactor', -1, 0, 0], ['core', 0, 0, 0], ['reactor', 1, 0, 0], ['fuelTank', 2, 0, 0], ['gyro', 3, 0, 0],
+    ['turret', -3, 1, 0], ['cargo', -2, 1, 0], ['battery', -1, 1, 0], ['shield', 0, 1, 0], ['battery', 1, 1, 0], ['cargo', 2, 1, 0], ['turret', 3, 1, 0],
+    ['gyro', -3, 2, 0], ['fuelTank', -2, 2, 0], ['thruster', -1, 2, 0], ['thruster', 0, 2, 0], ['thruster', 1, 2, 0], ['fuelTank', 2, 2, 0], ['gyro', 3, 2, 0],
+    ['thruster', -3, 3, 0], ['thruster', -2, 3, 0], ['thruster', 2, 3, 0], ['thruster', 3, 3, 0],
+  ] },
+  leviathan: { name: 'Leviathan', desc: 'Torch drives, fusion power, a railgun and a cargo bay you could lose a moon in. 11×11.', cells: [
+    ['laser', -4, -5, 0], ['laser', -2, -5, 0], ['railgun', 0, -5, 0], ['laser', 2, -5, 0], ['laser', 4, -5, 0],
+    ['thruster', -5, -4, 2], ['cargo', -4, -4, 0], ['armor', -3, -4, 0], ['cargo', -2, -4, 0], ['armor', -1, -4, 0], ['armor', 1, -4, 0], ['cargo', 2, -4, 0], ['armor', 3, -4, 0], ['cargo', 4, -4, 0], ['thruster', 5, -4, 2],
+    ['turret', -5, -3, 0], ['cargo', -4, -3, 0], ['cargo', -3, -3, 0], ['cargo', -2, -3, 0], ['shield', -1, -3, 0], ['turret', 0, -3, 0], ['shield', 1, -3, 0], ['cargo', 2, -3, 0], ['cargo', 3, -3, 0], ['cargo', 4, -3, 0], ['turret', 5, -3, 0],
+    ['thruster', -5, -2, 1], ['fuelTank', -4, -2, 0], ['fusion', -3, -2, 0], ['battery', -1, -2, 0], ['battery', 0, -2, 0], ['battery', 1, -2, 0], ['fusion', 2, -2, 0], ['fuelTank', 4, -2, 0], ['thruster', 5, -2, 3],
+    ['turret', -5, -1, 0], ['fuelTank', -4, -1, 0], ['battery', -1, -1, 0], ['gyro', 0, -1, 0], ['battery', 1, -1, 0], ['fuelTank', 4, -1, 0], ['turret', 5, -1, 0],
+    ['shield', -5, 0, 0], ['gyro', -4, 0, 0], ['cargo', -3, 0, 0], ['cargo', -2, 0, 0], ['tractor', -1, 0, 0], ['core', 0, 0, 0], ['battery', 1, 0, 0], ['cargo', 2, 0, 0], ['cargo', 3, 0, 0], ['gyro', 4, 0, 0], ['shield', 5, 0, 0],
+    ['turret', -5, 1, 0], ['gyro', -4, 1, 0], ['cargo', -3, 1, 0], ['cargo', -2, 1, 0], ['armor', -1, 1, 0], ['gyro', 0, 1, 0], ['armor', 1, 1, 0], ['cargo', 2, 1, 0], ['cargo', 3, 1, 0], ['gyro', 4, 1, 0], ['turret', 5, 1, 0],
+    ['thruster', -4, 2, 0], ['heavyThruster', -3, 2, 0], ['fuelTank', -2, 2, 0], ['heavyThruster', -1, 2, 0], ['fuelTank', 0, 2, 0], ['heavyThruster', 1, 2, 0], ['fuelTank', 2, 2, 0], ['heavyThruster', 3, 2, 0], ['thruster', 4, 2, 0],
   ] },
   larry: { name: 'Lopsided Larry', desc: 'A teaching aid. Watch what off-center thrust does.', cells: [
     ['laser', 0, -1, 0], ['core', 0, 0, 0], ['cargo', 1, 0, 0], ['hull', 2, 0, 0],

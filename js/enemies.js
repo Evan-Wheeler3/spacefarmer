@@ -84,6 +84,8 @@ export class EnemySystem {
     this.boss = null;
   }
   onDock() {
+    // walking away from a boss lets the tension cool off a little
+    if (this.boss) this.threat = 60;
     this.world.enemies.length = 0;
     this.mines.length = 0; this.beams.length = 0;
     this.boss = null;

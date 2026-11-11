@@ -323,45 +323,53 @@ export class Starfield {
   setTheme(colors, seed = 1) {
     this.colors = colors;
     const R = rng(seed);
-    this.layers = [0.08, 0.2, 0.45].map((par, li) => {
-      const cv = document.createElement('canvas');
-      cv.width = cv.height = 512;
-      const g = cv.getContext('2d');
-      const n = [220, 120, 50][li];
-      for (let i = 0; i < n; i++) {
-        const x = R() * 512, y = R() * 512;
-        const s = R.range(0.4, 1) * (li + 1) * 0.7;
-        const tint = R.pick(['#ffffff', '#cfe3ff', '#ffe9c4', '#c4d9ff']);
-        g.globalAlpha = R.range(0.3, 1);
-        g.fillStyle = tint;
-        g.beginPath(); g.arc(x, y, s, 0, TAU); g.fill();
-        if (li === 2 && R() < 0.25) { g.globalAlpha = 0.25; g.fillRect(x - s * 3, y - 0.3, s * 6, 0.6); g.fillRect(x - 0.3, y - s * 3, 0.6, s * 6); }
-      }
-      return { cv, par };
-    });
-    const nb = document.createElement('canvas');
-    nb.width = nb.height = 1024;
-    const g = nb.getContext('2d');
+    // far layer: one opaque tile (backdrop + nebula + faint stars) = a single blit per frame
+    const T = 1024;
+    const far = document.createElement('canvas');
+    far.width = far.height = T;
+    const g = far.getContext('2d');
+    g.fillStyle = '#04050c'; g.fillRect(0, 0, T, T);
     for (let i = 0; i < 9; i++) {
-      const x = R() * 1024, y = R() * 1024, r = R.range(150, 420);
-      const grd = g.createRadialGradient(x, y, 0, x, y, r);
+      const x = R() * T, y = R() * T, r = R.range(150, 420);
       const col = i % 2 ? colors[1] : colors[0];
-      grd.addColorStop(0, hexA(col, 0.55)); grd.addColorStop(1, hexA(col, 0));
-      g.fillStyle = grd;
-      for (const dx of [-1024, 0, 1024]) for (const dy of [-1024, 0, 1024]) { g.save(); g.translate(dx, dy); g.fillRect(x - r, y - r, r * 2, r * 2); g.restore(); }
+      for (const dx of [-T, 0, T]) for (const dy of [-T, 0, T]) {
+        const grd = g.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, r);
+        grd.addColorStop(0, hexA(col, 0.55)); grd.addColorStop(1, hexA(col, 0));
+        g.fillStyle = grd; g.fillRect(x + dx - r, y + dy - r, r * 2, r * 2);
+      }
     }
-    this.nebula = nb;
+    for (let i = 0; i < 520; i++) {
+      const x = R() * T, y = R() * T, sz = R.range(0.3, 1.1);
+      g.globalAlpha = R.range(0.25, 0.9);
+      g.fillStyle = R.pick(['#ffffff', '#cfe3ff', '#ffe9c4', '#c4d9ff']);
+      g.beginPath(); g.arc(x, y, sz, 0, TAU); g.fill();
+    }
+    g.globalAlpha = 1;
+    this.far = far;
+    // near layers: individual points, cheap to draw and properly parallaxed
+    this.near = [0.18, 0.4].map((par, li) => ({
+      par,
+      stars: Array.from({ length: li ? 45 : 70 }, () => ({ x: R() * 512, y: R() * 512, s: R.range(0.8, 1.6) * (li + 1), a: R.range(0.4, 1), c: R.pick(['#ffffff', '#cfe3ff', '#ffe9c4']), sparkle: R() < 0.2 })),
+    }));
   }
   draw(ctx, w, h, camx, camy, zoom) {
-    ctx.fillStyle = '#04050c';
-    ctx.fillRect(0, 0, w, h);
-    const nebPar = 0.04;
-    this._tile(ctx, this.nebula, w, h, camx * nebPar, camy * nebPar, 1.3);
-    for (const L of this.layers) this._tile(ctx, L.cv, w, h, camx * L.par, camy * L.par, 0.8 + zoom * L.par);
-  }
-  _tile(ctx, cv, w, h, ox, oy, scale) {
-    const S = cv.width * scale;
-    const sx = -(((ox % S) + S) % S), sy = -(((oy % S) + S) % S);
-    for (let x = sx; x < w; x += S) for (let y = sy; y < h; y += S) ctx.drawImage(cv, x, y, S, S);
+    const T = this.far.width;
+    const ox = camx * 0.05, oy = camy * 0.05;
+    const sx = -(((ox % T) + T) % T), sy = -(((oy % T) + T) % T);
+    for (let x = sx; x < w; x += T) for (let y = sy; y < h; y += T) ctx.drawImage(this.far, x, y);
+    for (const L of this.near) {
+      const S = 512 * (0.8 + zoom * 0.3);
+      const k = S / 512;
+      const bx = -(((camx * L.par) % S) + S) % S, by = -(((camy * L.par) % S) + S) % S;
+      for (const st of L.stars) {
+        ctx.globalAlpha = st.a;
+        ctx.fillStyle = st.c;
+        for (let x = bx + st.x * k; x < w; x += S) for (let y = by + st.y * k; y < h; y += S) {
+          ctx.fillRect(x, y, st.s, st.s);
+          if (st.sparkle) { ctx.globalAlpha = st.a * 0.3; ctx.fillRect(x - st.s * 2, y + st.s / 2 - 0.3, st.s * 5, 0.6); ctx.fillRect(x + st.s / 2 - 0.3, y - st.s * 2, 0.6, st.s * 5); ctx.globalAlpha = st.a; }
+        }
+      }
+    }
+    ctx.globalAlpha = 1;
   }
 }

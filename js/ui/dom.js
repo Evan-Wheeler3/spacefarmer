@@ -5,7 +5,7 @@ export function el(tag, attrs = {}, ...kids) {
     const v = attrs[k];
     if (v == null || v === false) continue;
     if (k === 'class') e.className = v;
-    else if (k === 'style' && typeof v === 'object') Object.assign(e.style, v);
+    else if (k === 'style' && typeof v === 'object') { for (const sk in v) sk.startsWith('--') ? e.style.setProperty(sk, v[sk]) : (e.style[sk] = v[sk]); }
     else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
     else if (k === 'html') e.innerHTML = v;
     else e.setAttribute(k, v === true ? '' : v);

@@ -1,2 +1,4 @@
 node_modules/
 .DS_Store
+docs/screens/*-1920x1080.png
+docs/screens/*-1024x768.png

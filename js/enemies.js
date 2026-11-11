@@ -596,10 +596,10 @@ export class EnemySystem {
       ctx.rotate(e.angle + Math.PI / 2);
       // engine glow
       if (e.type !== 'missile') {
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.fillStyle = hexA(e.def.color, 0.35 + Math.random() * 0.2);
+        ctx.globalAlpha = 0.35 + Math.random() * 0.2;
+        ctx.fillStyle = e.def.color;
         ctx.beginPath(); ctx.arc(0, e.radius * 0.95, e.radius * 0.35, 0, TAU); ctx.fill();
-        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1;
       }
       if (e.boss) { const pulse = 1 + Math.sin(w.time * 3) * 0.03; ctx.scale(pulse, pulse); }
       ctx.drawImage(spr.cv, -spr.size / 2, -spr.size / 2, spr.size, spr.size);

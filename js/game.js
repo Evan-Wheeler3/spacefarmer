@@ -16,6 +16,8 @@ import { P_GLOW } from './particles.js';
 import { EnemySystem } from './enemies.js';
 import { PlanetSystem } from './planet.js';
 import { renderResearch, renderStarMap, goalCard } from './ui/research.js';
+import { Tutorial } from './ui/tutorial.js';
+import { Audio } from './audio.js';
 
 const STEP = 1 / 60;
 
@@ -35,7 +37,12 @@ export class Game {
     this.hangar = new Hangar(this);
     this.enemySystem = new EnemySystem(this);
     this.planetSystem = new PlanetSystem(this);
-    this.systems.push(this.enemySystem, this.planetSystem);
+    this.tutorial = new Tutorial(this);
+    this.systems.push(this.enemySystem, this.planetSystem, this.tutorial);
+    this.audio = new Audio();
+    const unlock = () => { this.audio.unlock(); this.audio.setVolume(this.settings.volume, this.settings.music); };
+    addEventListener('pointerdown', unlock);
+    addEventListener('keydown', unlock);
     this.hangar.addTab('research', 'Research', (c) => renderResearch(this, c), 'shipyard');
     this.hangar.addTab('map', 'Star Map', (c) => renderStarMap(this, c), 'research');
     this.goalCard = () => goalCard(this);
@@ -364,12 +371,13 @@ export class Game {
     if (this.state === 'flight') {
       if (Input.hit('KeyT')) { ship.assist = !ship.assist; toast('Flight assist ' + (ship.assist ? 'ON' : 'OFF — pure Newtonian. Good luck.')); }
       if (Input.hit('F3')) { this.settings.telemetry = !this.settings.telemetry; }
+      if (Input.hit('KeyM')) { this.settings.volume = this.settings.volume > 0 ? 0 : 0.7; this.applySettings(); toast(this.settings.volume ? 'Sound on' : 'Sound muted'); }
       if (Input.mouse.wheel) this.cam.userZoom = clamp(this.cam.userZoom * (Input.mouse.wheel > 0 ? 0.9 : 1.1), 0.5, 2);
       ship.input = ship.dead ? { thrust: 0, strafe: 0, turn: 0 } : this.autopilot ? this.autopilot(ship, this.world) : Input.flight();
       // docking
       const dSt = Math.hypot(ship.x - this.world.station.x, ship.y - this.world.station.y);
       this.canDock = !ship.dead && dSt < ECONOMY.dockRadius + ship.radius && Math.hypot(ship.vx, ship.vy) < ECONOMY.dockMaxSpeed;
-      if (this.canDock && (Input.hit('KeyF') || Input.padPressed.has(0) && !ship.input.fire)) { this.dock(); return; }
+      if (this.canDock && (Input.hit('KeyF') || Input.padPressed.has(1))) { this.dock(); return; }
       // recall: hold R (or chosen from the pause menu)
       if (!ship.dead) {
         if (Input.down('KeyR') || this.recallAuto) {
@@ -396,6 +404,7 @@ export class Game {
 
   render(dt) {
     const { ctx, cam } = this;
+    this.audio.update(this);
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     this.stars.draw(ctx, this.W, this.H, cam.x, cam.y, cam.zoom);
     const world = this.state === 'title' ? this.titleWorld : this.world;

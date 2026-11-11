@@ -13,6 +13,7 @@ import { loadSave, newSave, writeSave, wipeSave } from './save.js';
 import { sellValue, offlineEarnings, droneIncomePerMinute, sectorUnlocked } from './economy.js';
 import { money, fmt, pick, clamp, TAU } from './util.js';
 import { P_GLOW } from './particles.js';
+import { EnemySystem } from './enemies.js';
 
 const STEP = 1 / 60;
 
@@ -30,6 +31,8 @@ export class Game {
     this.save = loadSave();
     this.settings = this.save ? this.save.settings : newSave().settings;
     this.hangar = new Hangar(this);
+    this.enemySystem = new EnemySystem(this);
+    this.systems.push(this.enemySystem);
     this.stars = new Starfield(SECTORS[this.save ? this.save.sector : 0].bg, 7);
     Input.init(canvas);
     addEventListener('resize', () => this.resize());
@@ -162,6 +165,7 @@ export class Game {
   }
 
   clearOverlays() {
+    document.body.classList.remove('flying');
     if (this.overlay) { this.overlay.remove(); this.overlay = null; }
     this.hangar.close();
   }
@@ -212,6 +216,7 @@ export class Game {
     this.ship = ship;
     this.cam.snap(ship.x, ship.y);
     this.state = 'flight';
+    document.body.classList.add('flying');
     this.trip = { time: 0, ore: 0, kills: 0, bounty: 0, refuel: 0 };
     this.recall = 0;
     this.recallAuto = false;
@@ -350,10 +355,17 @@ export class Game {
         } else this.recall = Math.max(0, this.recall - dt * 3);
       }
     }
-    ship.update(dt, this.world);
-    this.world.update(dt, ship);
-    for (const s of this.systems) s.update && s.update(dt);
+    // brief slow motion for big moments
+    let sdt = dt;
+    if (this.slowmo > 0) { this.slowmo -= dt; sdt = dt * 0.3; }
+    ship.update(sdt, this.world);
+    this.world.update(sdt, ship);
+    for (const s of this.systems) s.update && s.update(sdt);
     if (ship.dead && this.dyingT > 0) { this.dyingT -= dt; if (this.dyingT <= 0) { this.finishDeath(); return; } }
+    // pull the camera back when enemies are close so fights stay readable
+    let near = 1e9;
+    for (const e of this.world.enemies) if (!e.dead && e.type !== 'missile') near = Math.min(near, Math.hypot(e.x - ship.x, e.y - ship.y) - (e.boss ? e.radius * 2 : 0));
+    this.cam.combat = near < 900 ? clamp(380 / Math.max(380, near), 0.62, 1) : 1;
     this.cam.follow(ship, dt);
     this._autosave = (this._autosave || 0) + dt;
     if (this._autosave > 15) { this._autosave = 0; this.persist(); }
@@ -367,7 +379,8 @@ export class Game {
     if (!world) return;
     ctx.save();
     ctx.setTransform(cam.zoom * this.dpr, 0, 0, cam.zoom * this.dpr, (this.W / 2 - (cam.x + cam.sx) * cam.zoom) * this.dpr, (this.H / 2 - (cam.y + cam.sy) * cam.zoom) * this.dpr);
-    for (const s of this.systems) s.drawBack && s.drawBack(ctx, cam);
+    const sys = this.state === 'title' ? [] : this.systems;
+    for (const s of sys) s.drawBack && s.drawBack(ctx, cam);
     world.draw(ctx, cam, this.time);
     const flying = (this.state === 'flight' || this.state === 'paused' || this.state === 'cinematic') && this.ship;
     if (flying) {
@@ -375,14 +388,14 @@ export class Game {
       if (!this.ship.dead) drawShip(ctx, this.ship, this.time);
       world.drawShield(ctx, this.ship, this.time);
     }
-    for (const s of this.systems) s.draw && s.draw(ctx, cam);
+    for (const s of sys) s.draw && s.draw(ctx, cam);
     world.drawBullets(ctx, cam);
     world.particles.draw(ctx, cam.view(40));
     world.floaters.draw(ctx, cam.zoom);
     ctx.restore();
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     if (flying && this.state !== 'cinematic') this.drawHud(ctx);
-    for (const s of this.systems) s.hud && s.hud(ctx, this.W, this.H);
+    for (const s of sys) s.hud && s.hud(ctx, this.W, this.H);
   }
 
   drawHud(ctx) {

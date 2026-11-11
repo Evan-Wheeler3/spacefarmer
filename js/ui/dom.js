@@ -19,7 +19,7 @@ export function toast(text, cls = '', ms = 2200) {
   if (!toastWrap) { toastWrap = el('div', { class: 'toast-wrap' }); document.getElementById('ui').append(toastWrap); }
   const t = el('div', { class: 'toast ' + cls }, text);
   toastWrap.append(t);
-  while (toastWrap.children.length > 4) toastWrap.firstChild.remove();
+  while (toastWrap.children.length > (document.body.classList.contains("flying") ? 2 : 4)) toastWrap.firstChild.remove();
   setTimeout(() => { t.style.transition = 'opacity 0.3s'; t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, ms);
 }
 

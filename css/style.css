@@ -130,3 +130,5 @@ textarea.inp { resize: vertical; font-family: monospace; font-size: 12px; }
 .i-rows { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; font-size: 12.5px; }
 .i-rows > div { display: flex; justify-content: space-between; }
 @media (max-width: 1100px) { .builder { grid-template-columns: 190px 1fr 250px; } }
+body.flying .toast-wrap { top: 64px; }
+body.flying .toast { font-size: 13px; padding: 5px 12px; background: rgba(12,18,36,0.75); }

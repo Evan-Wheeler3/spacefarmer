@@ -18,7 +18,7 @@ export class Camera {
       tx = target.x + target.vx * CAMERA.lookAhead;
       ty = target.y + target.vy * CAMERA.lookAhead;
       const sizeZoom = clamp(70 / Math.max(40, target.radius || 40), 0.55, 1.1);
-      tz = clamp(CAMERA.zoom * this.userZoom * sizeZoom / (1 + sp * CAMERA.speedZoomOut), CAMERA.minZoom, CAMERA.maxZoom);
+      tz = clamp(CAMERA.zoom * this.userZoom * sizeZoom * (this.combat || 1) / (1 + sp * CAMERA.speedZoomOut), CAMERA.minZoom, CAMERA.maxZoom);
       // scale for screen size so a 720p and 1440p screen show similar framing
       tz *= clamp(Math.min(this.w, this.h * 1.6) / 1100, 0.7, 1.6);
     }

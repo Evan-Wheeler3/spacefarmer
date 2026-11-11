@@ -51,19 +51,24 @@ export class Design {
     for (const e of entries) this.add({ ...e });
   }
   static fromPreset(preset) {
-    return new Design(preset.cells.map(([part, x, y, rot]) => ({ part, x, y, rot })));
+    return new Design(preset.cells.map(([part, x, y, rot]) => ({ part, x, y, rot, hp: 1 })));
   }
   static fromJSON(data) {
     const d = new Design();
     if (!data || !Array.isArray(data.cells)) return d;
     for (const c of data.cells) {
-      const [part, x, y, rot] = c;
-      if (!PARTS[part]) continue;
-      if (d.check(part, x, y, rot, GRID.size).ok) d.add({ part, x, y, rot });
+      const [part, x, y, rot, hp] = c;
+      if (!PARTS[part] || ![0, 1, 2, 3].includes(rot)) continue;
+      if (d.check(part, x, y, rot, GRID.size).ok) d.add({ part, x, y, rot, hp: hp == null ? 1 : Math.max(0, Math.min(1, hp)) });
     }
     return d;
   }
-  toJSON() { return { cells: this.entries.map((e) => [e.part, e.x, e.y, e.rot]) }; }
+  toJSON() {
+    return { cells: this.entries.map((e) => (e.hp != null && e.hp < 1 ? [e.part, e.x, e.y, e.rot, Math.round(e.hp * 1000) / 1000] : [e.part, e.x, e.y, e.rot])) };
+  }
+  // full-condition copy (blueprint form)
+  pristine() { return new Design(this.entries.map((e) => ({ ...e, hp: 1 }))); }
+  damaged() { return this.entries.some((e) => e.hp != null && e.hp < 1); }
   clone() { return new Design(this.entries); }
 
   rebuild() {
@@ -161,12 +166,13 @@ export function analyze(design, levels = {}, opts = {}) {
   const thrusters = [];
   const warnings = [];
   const bad = new Set();
-  let blockedEx = 0, blockedMz = 0;
+  let blockedEx = 0, blockedMz = 0, wrecked = 0;
 
   design.entries.forEach((e, i) => {
     const p = PARTS[e.part];
     value += p.cost;
     if (!conn.has(i)) { bad.add(i); return; }
+    if (e.hp === 0) { bad.add(i); wrecked++; return; }
     const c = entryCenter(e);
     const f = footprint(e.part, e.rot);
     items.push({ x: c.x, y: c.y, m: p.mass, w: f.w, h: f.h });
@@ -230,6 +236,7 @@ export function analyze(design, levels = {}, opts = {}) {
   if (!hasCore) warnings.push({ lvl: 'err', text: 'No Command Core. Someone has to sit somewhere.' });
   const disconnected = design.entries.length - conn.size - (hasCore ? 0 : 0);
   if (hasCore && conn.size < design.entries.length) warnings.push({ lvl: 'err', text: `${design.entries.length - conn.size} part(s) not attached to the core. They will stay behind.` });
+  if (wrecked) warnings.push({ lvl: 'err', text: `${wrecked} part(s) are wrecked. Repair at the Market.` });
   if (blockedEx) warnings.push({ lvl: 'err', text: `${blockedEx} thruster(s) have blocked exhaust and won't fire.` });
   if (blockedMz) warnings.push({ lvl: 'warn', text: `${blockedMz} laser/railgun(s) are firing into your own hull. Disabled.` });
   if (hasCore && fwd.F - rcs <= 0) warnings.push({ lvl: 'err', text: 'No forward-facing thrusters. You will drift with great dignity.' });
@@ -247,6 +254,6 @@ export function analyze(design, levels = {}, opts = {}) {
     accel, accelLoaded, twr, turnRate, turn90, angAccel, gyroTorque, imbalance, fwdTorque: fwd.T,
     gen, peakDraw, battery, fuel, burn: fwd.burn, endurance, cargo, mining, dps, shield, shieldRegen,
     magnet, hp, value, crackers, warnings, bad, conn, thrusters, disconnected,
-    launchable: hasCore && fwd.F - rcs > 0,
+    launchable: hasCore && fwd.F - rcs > 0 && !design.entries.some((e) => PARTS[e.part].core && e.hp === 0),
   };
 }

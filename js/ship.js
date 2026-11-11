@@ -10,7 +10,7 @@ const C = PHYS.CELL;
 const key = (x, y) => x + ',' + y;
 
 export class Ship {
-  constructor(design, levels = {}, hpState = null) {
+  constructor(design, levels = {}) {
     this.levels = levels;
     this.fx = upgradeEffects(levels);
     this.design = design.clone();
@@ -25,7 +25,7 @@ export class Ship {
       const maxHp = def.hp * this.fx.hpMult;
       const p = {
         id: e.part, def, entry: e, gx: c.x, gy: c.y, w: f.w, h: f.h, rot: e.rot,
-        dir: DIRS[e.rot], maxHp, hp: hpState && hpState[this.parts.length] != null ? Math.min(maxHp, hpState[this.parts.length]) : maxHp,
+        dir: DIRS[e.rot], maxHp, hp: maxHp * (e.hp == null ? 1 : e.hp),
         alive: true, act: 0, cool: rand(0, 0.3), aim: -Math.PI / 2, firing: 0, lx: 0, ly: 0, flash: 0,
       };
       this.parts.push(p);
@@ -51,6 +51,7 @@ export class Ship {
     this.input = { thrust: 0, strafe: 0, turn: 0, fire: false, crack: false };
     this.stats = { thrustTorque: 0, gyroTorque: 0, gyroUse: 0, burn: 0 };
     this.recomputeMass(true);
+    if (this.parts.some((p) => !p.alive)) { this.afterStructureChange(null); this.recomputeMass(true); }
   }
 
   markBlocked() {
@@ -446,7 +447,15 @@ export class Ship {
     this.version++;
   }
 
-  hpState() { return this.parts.map((p) => (p.alive ? Math.round(p.hp) : 0)); }
+  // Copy part condition back into the blueprint after a flight.
+  writeBack(design) {
+    const d = design.clone();
+    for (const p of this.parts) {
+      const e = d.entries.find((q) => q.x === p.entry.x && q.y === p.entry.y && q.part === p.entry.part);
+      if (e) e.hp = p.alive ? Math.max(0.01, Math.min(1, p.hp / p.maxHp)) : 0;
+    }
+    return d;
+  }
 
   damageFraction() {
     let lost = 0, tot = 0;

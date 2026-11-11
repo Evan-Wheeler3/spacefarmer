@@ -201,3 +201,14 @@ body:not(.flying) .toast-wrap { top: auto; bottom: 22px; left: auto; right: 22px
 .tut-flight { top: 58px; }
 .tbl tr.c-done td { color: var(--dim); }
 .tbl tr.c-next td { background: rgba(255,214,10,0.07); font-weight: 700; }
+
+/* ---------- dev sandbox ---------- */
+.devbar { position: fixed; bottom: 8px; left: 400px; right: 16px; display: flex; flex-wrap: wrap; gap: 5px; align-items: center; justify-content: center; z-index: 25; }
+.devbar > * { box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+.dev-tag { background: #ff3cac; color: #fff; font-weight: 900; font-size: 11px; letter-spacing: 2px; padding: 4px 8px; border-radius: 6px; }
+.dev-sel { width: auto; padding: 4px 6px; font-size: 12px; }
+.dev-up { display: grid; grid-template-columns: 1fr auto 52px auto; gap: 6px; align-items: center; font-size: 13px; padding: 2px 0; }
+.dev-lv { text-align: center; color: var(--accent); font-weight: 700; }
+.dev-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.dev .card h3 { color: #ff3cac; }
+.title-btns .btn:nth-child(3), .title-btns .btn:last-child[title] { border-color: #ff3cac; }

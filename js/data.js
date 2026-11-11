@@ -25,7 +25,7 @@ export const PHYS = {
 };
 
 export const CAMERA = {
-  zoom: 1.35, minZoom: 0.45, maxZoom: 2.2,
+  zoom: 1.35, minZoom: 0.12, maxZoom: 2.2,
   speedZoomOut: 0.00045,    // zoom out a little as you go faster
   lookAhead: 0.35,          // seconds of velocity the camera leads by
   smoothing: 5,             // higher = snappier follow
@@ -139,7 +139,8 @@ export const PARTS = {
 };
 
 // Builder grid
-export const GRID = { size: 13, frameSizes: [7, 9, 11, 13] };
+// Build area: frame starts 7x7 and each Frame Extension level adds 2 (up to size x size)
+export const GRID = { size: 31, frameSizes: [7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31] };
 
 // ---------------------------------------------------------------------
 // Enemies. `ai` selects a behaviour in enemies.js.
@@ -336,8 +337,8 @@ export const UPGRADES = [
   { id: 'drones',   branch: 'Industry', name: 'Drone Bay', desc: 'Drones mine while you do anything else. Passive income, also offline.',
     cost: [1500, 4000, 11000, 30000, 80000], effect: { droneRate: 1 }, requires: ['refinery'] },
   // Engineering
-  { id: 'frame',    branch: 'Engineering', name: 'Frame Extension', desc: 'Larger build area: 9x9, 11x11, 13x13.',
-    cost: [500, 4000, 20000], effect: { frame: 1 }, requires: [] },
+  { id: 'frame',    branch: 'Engineering', name: 'Frame Extension', desc: 'Build area +2 per level, from 7×7 up to 31×31. Big ships turn slowly; physics is undefeated.',
+    cost: [500, 4000, 20000, 50000, 110000, 230000, 450000, 850000, 1500000, 2600000, 4400000, 7500000], effect: { frame: 1 }, requires: [] },
   { id: 'alloys',   branch: 'Engineering', name: 'Better Alloys', desc: '+15% part health per level.',
     cost: [400, 1200, 3500, 10000], effect: { hpMult: 0.15 }, requires: [] },
   { id: 'injectors', branch: 'Engineering', name: 'Fuel Injectors', desc: '-12% thruster fuel use per level.',

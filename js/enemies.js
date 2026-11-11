@@ -246,9 +246,8 @@ export class EnemySystem {
     this.banner.text = 'Pirates nearby: ' + this.banner.text;
   }
 
-  spawnBoss() {
+  spawnBoss(id = this.sector.boss) {
     const ship = this.game.ship;
-    const id = this.sector.boss;
     const def = BOSSES[id];
     const a = rand(0, TAU);
     const b = {
@@ -328,7 +327,7 @@ export class EnemySystem {
     const st = w.station;
     const inSafe = Math.hypot(ship.x - st.x, ship.y - st.y) < ECONOMY.stationSafeRadius;
     // light ambient pirates while mining
-    if (!ship.dead && !inSafe && !this.contract) {
+    if (!ship.dead && !inSafe && !this.contract && !this.save.dev?.peaceful) {
       this.ambientT -= dt;
       if (this.ambientT <= 0) { this.ambientT = rand(...CONTRACTS.ambientEvery); if (!w.enemies.some((e) => !e.dead && e.type !== 'missile')) this.spawnAmbient(); }
     }

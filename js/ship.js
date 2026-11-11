@@ -392,6 +392,7 @@ export class Ship {
   damagePart(i, dmg, world) {
     const p = this.parts[i];
     if (!p || !p.alive) return false;
+    if (this.god) { p.flash = 1; return false; } // dev sandbox
     dmg = Math.max(dmg * 0.25, dmg - (p.def.armor || 0));
     p.hp -= dmg;
     p.flash = 1;

@@ -9,7 +9,8 @@ import { Starfield, drawShip } from './render.js';
 import { drawFlightHud, edgeArrow } from './ui/hud.js';
 import { Hangar } from './ui/hangar.js';
 import { el, toast, popEl, modal } from './ui/dom.js';
-import { loadSave, newSave, writeSave, wipeSave } from './save.js';
+import { loadSave, newSave, writeSave, wipeSave, SANDBOX_KEY } from './save.js';
+import { Dev } from './ui/dev.js';
 import { sellValue, offlineEarnings, droneIncomePerMinute, sectorUnlocked } from './economy.js';
 import { money, fmt, pick, clamp, TAU } from './util.js';
 import { P_GLOW } from './particles.js';
@@ -32,13 +33,16 @@ export class Game {
     this.state = 'title';
     this.fps = 60; this._fpsAcc = 0; this._fpsN = 0;
     this.systems = [];       // optional subsystems: { update(dt), draw(ctx), hud(ctx), onLaunch(), onDock() }
+    this.saveKey = undefined;   // main slot; the dev sandbox uses SANDBOX_KEY
+    this.timeScale = 1;
     this.save = loadSave();
     this.settings = this.save ? this.save.settings : newSave().settings;
     this.hangar = new Hangar(this);
     this.enemySystem = new EnemySystem(this);
     this.planetSystem = new PlanetSystem(this);
     this.tutorial = new Tutorial(this);
-    this.systems.push(this.enemySystem, this.planetSystem, this.tutorial);
+    this.dev = new Dev(this);
+    this.systems.push(this.enemySystem, this.planetSystem, this.tutorial, this.dev);
     this.audio = new Audio();
     const unlock = () => { this.audio.unlock(); this.audio.setVolume(this.settings.volume, this.settings.music); };
     addEventListener('pointerdown', unlock);
@@ -75,7 +79,7 @@ export class Game {
   persist() {
     if (!this.save) return;
     if (this.state === 'flight' && this.ship && !this.ship.dead) this.stashShip();
-    writeSave(this.save);
+    writeSave(this.save, this.saveKey);
   }
   stashShip() {
     // capture flight state into the save without docking
@@ -162,6 +166,7 @@ export class Game {
   showTitle() {
     this.state = 'title';
     this.clearOverlays();
+    if (this.saveKey) { this.saveKey = undefined; this.timeScale = 1; this.save = loadSave(); if (this.save) this.settings = this.save.settings; }
     const has = !!this.save;
     const t = el('div', { class: 'title' },
       el('div', { class: 'title-logo' }, 'SPACE FARMER'),
@@ -171,7 +176,8 @@ export class Game {
         el('button', { class: 'btn big-btn' + (has ? '' : ' primary'), onclick: () => {
           if (has && !confirm('Start over? Your current save will be replaced.')) return;
           this.newGame();
-        } }, 'NEW GAME')),
+        } }, 'NEW GAME'),
+        el('button', { class: 'btn big-btn', title: 'Separate save slot with every upgrade, cheats and spawn tools. Never touches your real progress.', onclick: () => this.startSandbox() }, 'DEV SANDBOX')),
       has ? el('div', { class: 'dim' }, `${money(this.save.credits)} · ${SECTORS[this.save.sector].name} · ${this.save.planetsDestroyed} planet(s) destroyed`) : '',
       el('div', { class: 'title-help dim' }, 'W/S thrust · A/D turn · Q/E strafe · Space mine/fire · G start a contract · F dock · Esc pause'));
     this.overlay = t;
@@ -181,6 +187,7 @@ export class Game {
   clearOverlays() {
     document.body.classList.remove('flying');
     this.enemySystem && this.enemySystem.panelUpdate();
+    this.dev && this.dev.bar();
     if (this.overlay) { this.overlay.remove(); this.overlay = null; }
     this.hangar.close();
   }
@@ -193,6 +200,16 @@ export class Game {
     this.lastTrip = null;
     this.enterHangar('market');
     this.launch();
+  }
+
+  startSandbox() {
+    this.persist();
+    this.saveKey = SANDBOX_KEY;
+    this.save = loadSave(SANDBOX_KEY) || this.dev.freshSave();
+    this.settings = this.save.settings;
+    this.audio && this.audio.unlock();
+    this.lastTrip = null;
+    this.enterHangar('dev');
   }
 
   continueGame() {
@@ -217,13 +234,13 @@ export class Game {
     this.persist();
   }
 
-  jump(i) {
-    if (!sectorUnlocked(i, this.save)) return;
+  jump(i, force = false, tab = 'map') {
+    if (!force && !sectorUnlocked(i, this.save)) return;
     this.save.sector = i;
     this.world = new World(i, this, 1234 + i);
     this.sfx('jump');
     toast(`Jumped to ${SECTORS[i].name}`, 'good');
-    this.enterHangar('map');
+    this.enterHangar(tab);
   }
 
   launch() {
@@ -301,10 +318,11 @@ export class Game {
       this._fpsAcc += dt; this._fpsN++;
       if (this._fpsAcc > 0.5) { this.fps = this._fpsN / this._fpsAcc; this._fpsAcc = 0; this._fpsN = 0; }
       Input.pollPad();
-      this.acc += dt;
+      this.acc += dt * (this.state === 'flight' || this.state === 'cinematic' ? this.timeScale : 1);
       let steps = 0;
-      while (this.acc >= STEP && steps < 6) { this.update(STEP); this.acc -= STEP; steps++; }
-      if (steps === 6) this.acc = 0;
+      const maxSteps = 6 * Math.max(1, this.timeScale);
+      while (this.acc >= STEP && steps < maxSteps) { this.update(STEP); this.acc -= STEP; steps++; }
+      if (steps >= maxSteps) this.acc = 0;
       this.render(dt);
       Input.endFrame();
       requestAnimationFrame(frame);

@@ -15,6 +15,8 @@ drawn procedurally and all audio is synthesized with WebAudio.
   with a zero-dependency static server: `node tools/serve.mjs` → <http://localhost:8000>. Any static
   server works (`python3 -m http.server`). If you double-click `index.html` in Chrome you get a short
   explanation instead of a black screen. Firefox may run it directly from disk.
+- **Frames grow to 31×31.** Frame Extension has 12 levels (+2 cells each). The later ones are deliberately
+  expensive and meant as a long-term money sink after your first planet.
 - **Parts cost credits when placed and refund when removed**, scaled by the part's condition (so
   removing and re-adding a damaged part is never a free repair). Undo/redo in the Shipyard restores
   both the design *and* the credits.
@@ -57,7 +59,9 @@ drawn procedurally and all audio is synthesized with WebAudio.
 | C (hold) | charge the Planet Cracker | | |
 | T | toggle flight assist | **Hangar** | |
 | Wheel | zoom | Enter | launch (from any tab but Shipyard) |
-| M | mute | | |
+| M | mute | Ctrl/⌘ + wheel, − / + | zoom |
+| | | Arrow keys | pan |
+| | | F / Fit | fit the whole frame |
 | F3 | physics telemetry | | |
 | Esc | pause | | |
 
@@ -76,6 +80,21 @@ drawn procedurally and all audio is synthesized with WebAudio.
 6. **Build a Planet Cracker**, jump to Gorvox, aim at the planet and hold **C**.
 
 The **Road to Doomsday** card in the Market always shows the next step.
+
+## Dev sandbox
+
+**DEV SANDBOX** on the title screen opens a separate save slot (`spacefarmer.sandbox.v1`) that never
+touches your real progress. It starts with every research maxed (including a 31×31 frame), every boss
+beaten and ¢1B. The hangar gets a **⚙ Dev** tab with:
+
+- cheats: infinite credits, god mode, infinite fuel or power, and peaceful (no ambient pirates)
+- set credits, and raise or lower any research level (Max all / Reset all)
+- toggle boss kills, set each sector's contract board position and planets destroyed
+- jump to any sector, and reset the sandbox
+
+In flight, a **dev bar** along the bottom spawns any enemy (+1/+5) or any boss, kills everything, toggles
+god mode, repairs the ship, sets game speed (×0.25 to ×4) and teleports you next to the planet in Gorvox.
+**Save & quit to title** returns you to your real save.
 
 ## Content at a glance
 

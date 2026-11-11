@@ -2,6 +2,7 @@
 import { ECONOMY, PRESETS, VERSION } from './data.js';
 
 const KEY = 'spacefarmer.save.v1';
+export const SANDBOX_KEY = 'spacefarmer.sandbox.v1';
 
 export function newSave() {
   return {
@@ -23,9 +24,9 @@ export function newSave() {
   };
 }
 
-export function loadSave() {
+export function loadSave(key = KEY) {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = localStorage.getItem(key);
     if (!raw) return null;
     const data = JSON.parse(raw);
     const base = newSave();
@@ -41,17 +42,17 @@ export function loadSave() {
   }
 }
 
-export function writeSave(save) {
+export function writeSave(save, key = KEY) {
   try {
     save.lastSeen = Date.now();
-    localStorage.setItem(KEY, JSON.stringify(save));
+    localStorage.setItem(key, JSON.stringify(save));
     return true;
   } catch (e) {
     return false;
   }
 }
 
-export function wipeSave() { try { localStorage.removeItem(KEY); } catch (e) { /* storage blocked */ } }
+export function wipeSave(key = KEY) { try { localStorage.removeItem(key); } catch (e) { /* storage blocked */ } }
 
 // Blueprint share strings: base64 of compact JSON, prefixed for recognisability.
 export function exportBlueprint(name, design) {

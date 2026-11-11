@@ -37,6 +37,7 @@ export class Builder {
   mount(container) {
     this.design = Design.fromJSON(this.save.design);
     this.frame = frameSize(this.save.upgrades);
+    this.zoomHalf = null;
     this.history = [this.snapshot()];
     this.hidx = 0;
     this.root = el('div', { class: 'builder' });
@@ -52,12 +53,15 @@ export class Builder {
     const toolbar = el('div', { class: 'b-toolbar' },
       this.btnUndo, this.btnRedo,
       tb('⟳ Rotate', 'R or mouse wheel', () => this.rotate(1)),
+      tb('−', 'Zoom out (Ctrl/⌘ + wheel)', () => this.zoom(1.25)),
+      tb('+', 'Zoom in (Ctrl/⌘ + wheel)', () => this.zoom(0.8)),
+      tb('Fit', 'Fit the whole frame (F)', () => this.fit()),
       this.btnMirror, this.btnForces,
       el('span', { class: 'b-sep' }),
       tb('Presets', 'Load a pre-built design', () => this.presetsDialog()),
       tb('Blueprints', 'Save, load, export, import', () => this.blueprintsDialog()),
       tb('Strip', 'Remove everything except the core', () => this.clearAll(), 'danger'));
-    const hint = el('div', { class: 'b-hint' }, 'Left-click/drag: place · Right-click/drag: remove · R/wheel: rotate · M: mirror · Middle-click: pick part · Ctrl+Z/Y: undo/redo');
+    const hint = el('div', { class: 'b-hint' }, 'Left-click/drag: place · Right-click/drag: remove · R/wheel: rotate · M: mirror · Middle-click: pick part · Ctrl+wheel: zoom · Arrows: pan · F: fit · Ctrl+Z/Y: undo/redo');
     this.root.append(this.palette, el('div', { class: 'b-center' }, toolbar, this.canvas, hint), el('div', { class: 'b-side' }, this.stats, this.info));
     container.append(this.root);
     this.buildPalette();
@@ -85,7 +89,27 @@ export class Builder {
     const dpr = Math.min(2, devicePixelRatio || 1);
     this.cw = r.width; this.ch = r.height; this.dpr = dpr;
     this.canvas.width = Math.max(1, r.width * dpr); this.canvas.height = Math.max(1, r.height * dpr);
-    this.S = Math.floor(Math.min(r.width, r.height) / (GRID.size + 0.6));
+    // zoom to fit the current frame (plus a one-cell margin)
+    if (this.zoomHalf == null) this.fit(false);
+    this.S = Math.max(6, Math.min(72, Math.floor(Math.min(r.width, r.height) / (this.zoomHalf * 2 + 1.6))));
+  }
+
+  // view: zoomHalf = cells visible from center to edge; pan in cells
+  fit(redraw = true) {
+    this.zoomHalf = (this.frame - 1) / 2 + 1;
+    this.panX = 0; this.panY = 0;
+    if (redraw) this.resize();
+  }
+  zoom(k) {
+    this.zoomHalf = Math.max(3, Math.min((GRID.size - 1) / 2 + 1, this.zoomHalf * k));
+    this.resize();
+    this.updateHover();
+  }
+  pan(dx, dy) {
+    const lim = (this.frame - 1) / 2;
+    this.panX = Math.max(-lim, Math.min(lim, this.panX + dx));
+    this.panY = Math.max(-lim, Math.min(lim, this.panY + dy));
+    this.updateHover();
   }
 
   // ------------------------------------------------------------ palette
@@ -165,7 +189,7 @@ export class Builder {
       this.paint();
     });
     cv.addEventListener('contextmenu', (e) => e.preventDefault());
-    cv.addEventListener('wheel', (e) => { e.preventDefault(); this.rotate(e.deltaY > 0 ? 1 : -1); }, { passive: false });
+    cv.addEventListener('wheel', (e) => { e.preventDefault(); if (e.ctrlKey || e.metaKey) this.zoom(e.deltaY > 0 ? 1.12 : 0.89); else this.rotate(e.deltaY > 0 ? 1 : -1); }, { passive: false });
     this._up = (e) => {
       if (this.dragFromPalette && this.hover && !this.stroke && e.target === this.canvas) { this.stroke = { mode: 'place', before: this.snapshot(), changed: false, last: null }; this.paint(); }
       this.dragFromPalette = false;
@@ -178,6 +202,12 @@ export class Builder {
       else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyY') { e.preventDefault(); this.redo(); }
       else if (e.code === 'KeyR') this.rotate(e.shiftKey ? -1 : 1);
       else if (e.code === 'KeyM') this.toggleMirror();
+      else if (e.code === 'KeyF') this.fit();
+      else if (e.code.startsWith('Arrow')) {
+        e.preventDefault();
+        const st = Math.max(1, Math.round(this.zoomHalf / 4));
+        this.pan(e.code === 'ArrowLeft' ? -st : e.code === 'ArrowRight' ? st : 0, e.code === 'ArrowUp' ? -st : e.code === 'ArrowDown' ? st : 0);
+      }
     };
     addEventListener('keydown', this._key);
   }
@@ -185,7 +215,7 @@ export class Builder {
   toggleMirror() { this.mirror = !this.mirror; this.btnMirror.classList.toggle('on', this.mirror); this.game.sfx('click'); }
   rotate(d) { this.rot = (this.rot + d + 4) % 4; this.game.sfx('rotate'); this.updateHover(); }
 
-  cellAt(mx, my) { return [(mx - this.cw / 2) / this.S, (my - this.ch / 2) / this.S]; }
+  cellAt(mx, my) { return [(mx - this.cw / 2) / this.S + this.panX, (my - this.ch / 2) / this.S + this.panY]; }
   anchorFor(id, rot, fx, fy) {
     const f = footprint(id, rot);
     return [Math.round(fx - (f.w - 1) / 2), Math.round(fy - (f.h - 1) / 2)];
@@ -194,7 +224,8 @@ export class Builder {
     if (this.mx == null) return;
     const [fx, fy] = this.cellAt(this.mx, this.my);
     const cx = Math.round(fx), cy = Math.round(fy);
-    if (Math.abs(cx) > (GRID.size - 1) / 2 + 1 || Math.abs(cy) > (GRID.size - 1) / 2 + 1) { this.hover = null; return; }
+    const vis = Math.min((GRID.size - 1) / 2, (this.frame - 1) / 2 + 1);
+    if (Math.abs(cx) > vis + 1 || Math.abs(cy) > vis + 1) { this.hover = null; return; }
     const [ax, ay] = this.anchorFor(this.sel, this.rot, fx, fy);
     this.hover = { cx, cy, ax, ay };
     const idx = this.design.at(cx, cy);
@@ -469,8 +500,8 @@ export class Builder {
     const S = this.S, W = this.cw, H = this.ch;
     g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     g.clearRect(0, 0, W, H);
-    const cx = W / 2 + (this.denyT ? Math.sin(this.time * 90) * 4 * this.denyT * 3 : 0), cy = H / 2;
-    const half = (GRID.size - 1) / 2;
+    const cx = W / 2 - this.panX * S + (this.denyT ? Math.sin(this.time * 90) * 4 * this.denyT * 3 : 0), cy = H / 2 - this.panY * S;
+    const half = Math.min((GRID.size - 1) / 2, (this.frame - 1) / 2 + 1);
     const P = (x, y) => [cx + x * S, cy + y * S];
     // grid
     for (let y = -half; y <= half; y++) for (let x = -half; x <= half; x++) {

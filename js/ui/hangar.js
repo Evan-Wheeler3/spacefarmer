@@ -20,8 +20,8 @@ export class Hangar {
   }
 
   // other modules register extra tabs (research, star map)
-  addTab(id, label, render, after = 'shipyard') {
-    this.tabs[id] = { label, render };
+  addTab(id, label, render, after = 'shipyard', when = null) {
+    this.tabs[id] = { label, render, when };
     this.order.splice(this.order.indexOf(after) + 1, 0, id);
   }
 
@@ -54,12 +54,14 @@ export class Hangar {
 
   show(id) {
     if (!this.root) return;
+    if (this.tabs[id].when && !this.tabs[id].when()) id = 'market';
     const prev = this.tabs[this.tab];
     if (prev && prev.leave && this.tab !== id) prev.leave();
     if (this.tab === 'shipyard' && id === 'shipyard') this.builder.unmount();
     this.tab = id;
     this.tabBar.innerHTML = '';
     for (const k of this.order) {
+      if (this.tabs[k].when && !this.tabs[k].when()) continue;
       const b = el('button', { class: 'h-tab' + (k === id ? ' on' : ''), onclick: () => { this.game.sfx('click'); this.show(k); } }, this.tabs[k].label);
       if (k === 'market' && this.save.cargoUnits > 0) b.append(el('span', { class: 'badge' }, '●'));
       this.tabBar.append(b);

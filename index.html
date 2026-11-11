@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Space Farmer</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="ui"></div>
+<div id="boot-error" hidden>
+  <h1>SPACE FARMER</h1>
+  <p>Your browser refused to load the game's JavaScript modules from a <code>file://</code> page.</p>
+  <p>Start the bundled zero-dependency server and open the link it prints:</p>
+  <pre>node tools/serve.mjs</pre>
+  <p>or any static server, e.g. <code>python3 -m http.server</code>, then visit <code>http://localhost:8000</code>.</p>
+</div>
+<script>
+  // Module scripts are blocked on file:// in Chromium browsers; explain instead of showing a black screen.
+  setTimeout(function () { if (!window.__sfBooted) document.getElementById('boot-error').hidden = false; }, 2500);
+</script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

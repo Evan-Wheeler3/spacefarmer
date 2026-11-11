@@ -1,6 +1,9 @@
 // Research tree, Star Map, and the "Road to Doomsday" progress tracker.
 import { UPGRADES, SECTORS, BOSSES, PARTS, ORES, PLANETS } from '../data.js';
 import { UPGRADE_BY_ID, canBuyUpgrade, sectorUnlocked, droneIncomePerMinute, frameSize, planetReward } from '../economy.js';
+import { contractWave, contractPay, nextContract, rate, bossThreat } from '../contracts.js';
+import { ENEMIES } from '../data.js';
+import { analyze } from '../shipdesign.js';
 import { el, toast, popEl } from './dom.js';
 import { money } from '../util.js';
 import { Design } from '../shipdesign.js';
@@ -102,7 +105,8 @@ export function roadToDoomsday(save) {
   const steps = [
     { text: 'Mine ore and sell it at the Market', done: save.stats.earned > 0 },
     { text: 'Buy a part or research an upgrade', done: Object.keys(save.upgrades).length > 0 || (save.stats.partsBought || 0) > 0 },
-    { text: `Defeat ${BOSSES.grudge.name} (fill the threat meter in The Shallows)`, done: !!save.bossKills.grudge },
+    { text: `Complete combat contracts in The Shallows (fly out, press G)`, done: !!save.bossKills.grudge || (save.contracts?.shallows?.k || 0) > 0 },
+    { text: `Challenge and defeat ${BOSSES.grudge.name} (after the last contract)`, done: !!save.bossKills.grudge },
     { text: 'Research the Rust Belt License', done: has('licRust') },
     { text: `Defeat ${BOSSES.auditor.name} in the Rust Belt`, done: !!save.bossKills.auditor },
     { text: 'Research the Glass Reach License', done: has('licGlass') },
@@ -134,4 +138,31 @@ export function goalCard(game) {
       el('div', { class: 's-bar' }, el('i', { style: { width: Math.min(100, (s.credits / target.chk.cost) * 100) + '%', background: '#ffd60a' } })),
       el('span', { class: 'money' }, `${money(s.credits)} / ${money(target.chk.cost)}`)) : '',
     drones ? el('p', { class: 'dim small' }, `Drones: +${money(drones)}/min, even offline (up to 4h).`) : '');
+}
+
+// Contract board for the current sector: every wave, its pay and how your ship stacks up.
+export function contractCard(game) {
+  const s = game.save, si = s.sector, sec = SECTORS[si];
+  const bd = (s.contracts && s.contracts[sec.id]) || { k: 0, cleared: 0 };
+  const a = analyze(Design.fromJSON(s.design), s.upgrades);
+  const rows = [];
+  for (let k = 0; k < sec.contracts; k++) {
+    const w = contractWave(si, k);
+    const r = rate(a, w);
+    const done = k < bd.k;
+    rows.push(el('tr', { class: done ? 'c-done' : k === bd.k ? 'c-next' : '' },
+      el('td', {}, done ? '✓' : k + 1),
+      el('td', { class: 'small' }, Object.entries(w.counts).map(([t, n]) => `${n}× ${ENEMIES[t].name}`).join(', ')),
+      el('td', { class: 'money' }, money(contractPay(si, k, bd.cleared > 0))),
+      el('td', { style: { color: r.color } }, done ? '' : r.label)));
+  }
+  if (sec.boss) {
+    const b = BOSSES[sec.boss], r = rate(a, bossThreat(b));
+    rows.push(el('tr', { class: bd.k >= sec.contracts ? 'c-next' : '' }, el('td', {}, '☠'), el('td', { class: 'small' }, b.name + (s.bossKills[sec.boss] ? ' (beaten)' : '')),
+      el('td', { class: 'money' }, money(b.bounty)), el('td', { style: { color: r.color } }, r.label)));
+  }
+  return el('div', { class: 'card' },
+    el('h3', {}, `Contracts · ${sec.name}`),
+    el('p', { class: 'dim small' }, `You choose when to fight: fly out of the safe zone and press G (or the Start button at the top of the screen). Docking abandons a contract; your place on the board is kept.${bd.cleared ? ` Board cleared ${bd.cleared}× — repeat runs pay ${Math.round(100 * 0.6)}%.` : ''}`),
+    el('table', { class: 'tbl' }, el('tr', {}, el('th', {}, '#'), el('th', {}, 'Hostiles'), el('th', {}, 'Pays'), el('th', {}, 'For you')), rows));
 }

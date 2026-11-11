@@ -146,28 +146,34 @@ export const GRID = { size: 13, frameSizes: [7, 9, 11, 13] };
 // ---------------------------------------------------------------------
 export const ENEMIES = {
   gnat: {
+    cost: 1, threat: 1.6, // wave budget cost; est. damage/s it lands on an average pilot
     name: 'Scrap Gnat', ai: 'orbit', hp: 22, radius: 11, speed: 260, accel: 380, turn: 5,
     weapon: { damage: 4, rate: 1.1, speed: 420, range: 380 }, bounty: 14, color: '#ff5d73',
     orbit: 200,
   },
   lancer: {
+    cost: 1.5, threat: 2.4, // wave budget cost; est. damage/s it lands on an average pilot
     name: 'Repo Lancer', ai: 'ram', hp: 40, radius: 13, speed: 380, accel: 520, turn: 3.5,
     ram: 22, bounty: 22, color: '#ff8c42',
   },
   gunboat: {
+    cost: 3, threat: 5, // wave budget cost; est. damage/s it lands on an average pilot
     name: 'Toll Collector', ai: 'standoff', hp: 110, radius: 18, speed: 170, accel: 220, turn: 2.5,
     weapon: { damage: 9, rate: 0.6, speed: 520, range: 520, burst: 3, burstGap: 0.12 }, bounty: 55,
     color: '#ffd23f', standoff: 380,
   },
   leech: {
+    cost: 2, threat: 0.5, // wave budget cost; est. damage/s it lands on an average pilot
     name: 'Ore Leech', ai: 'leech', hp: 60, radius: 14, speed: 300, accel: 420, turn: 4,
     steal: 3, bounty: 40, color: '#7bd389',
   },
   minelayer: {
+    cost: 4, threat: 2.2, // wave budget cost; est. damage/s it lands on an average pilot
     name: 'Litterbug', ai: 'mines', hp: 140, radius: 20, speed: 150, accel: 180, turn: 2,
     mine: { damage: 35, radius: 70, every: 2.2, life: 25 }, bounty: 70, color: '#c77dff',
   },
   warden: {
+    cost: 6, threat: 4, // wave budget cost; est. damage/s it lands on an average pilot
     name: 'Complaints Dept.', ai: 'missiles', hp: 260, radius: 22, speed: 160, accel: 200, turn: 2,
     missile: { damage: 18, speed: 300, turn: 2.6, every: 2.6, life: 6 }, standoff: 450, bounty: 120,
     color: '#5bc0eb',
@@ -178,7 +184,7 @@ export const ENEMIES = {
 // are implemented in enemies.js (spread, ring, spawn, charge, beam, missiles).
 export const BOSSES = {
   grudge: {
-    name: 'Foreman Grudge', title: 'Disputes your mining rights', hp: 1500, radius: 60, speed: 90,
+    name: 'Foreman Grudge', title: 'Disputes your mining rights', hp: 2000, radius: 60, speed: 90,
     accel: 90, turn: 0.8, color: '#ff8c42', bounty: 1200, standoff: 340,
     phases: [
       { until: 0.5, attacks: [{ type: 'spread', count: 5, arc: 0.7, damage: 6, speed: 380, every: 1.6 },
@@ -233,34 +239,47 @@ export const SECTORS = [
   {
     id: 'shallows', name: 'The Shallows', blurb: 'Gentle rocks, gentle pirates. A fine place to make mistakes.',
     radius: 3600, asteroids: 120, hardness: 1, ores: { ferrite: 1 }, enemyScale: 1,
-    enemies: ['gnat', 'lancer'], firstWave: 80, waveInterval: 75, waveBudget: 2, waveGrowth: 0.5, maxWaveBudget: 7,
-    boss: 'grudge', threatPerOre: 0.3, threatPerKill: 1.5, bg: ['#0a0f24', '#1b1140'], license: null,
+    enemies: ['gnat', 'lancer'], contracts: 6, waveBudget: 2, waveGrowth: 0.5, contractPay: 150,
+    boss: 'grudge', bg: ['#0a0f24', '#1b1140'], license: null,
   },
   {
     id: 'rust', name: 'Rust Belt', blurb: 'Industrial leftovers and the people who left them.',
     radius: 4000, asteroids: 140, hardness: 1.8, ores: { ferrite: 0.45, cuprite: 0.55 }, enemyScale: 1.5,
-    enemies: ['gnat', 'lancer', 'gunboat', 'leech'], firstWave: 60, waveInterval: 65, waveBudget: 4, waveGrowth: 0.7, maxWaveBudget: 12,
-    boss: 'auditor', threatPerOre: 0.12, threatPerKill: 1.2, bg: ['#160b0b', '#3a1a12'], license: 'licRust',
+    enemies: ['gnat', 'lancer', 'gunboat', 'leech'], contracts: 6, waveBudget: 4, waveGrowth: 0.7, contractPay: 450,
+    boss: 'auditor', bg: ['#160b0b', '#3a1a12'], license: 'licRust',
   },
   {
     id: 'glass', name: 'Glass Reach', blurb: 'Crystal fields that sing when lasered. Locals find this territorial.',
     radius: 4400, asteroids: 150, hardness: 3, ores: { cuprite: 0.3, lumen: 0.7 }, enemyScale: 2.4,
-    enemies: ['gnat', 'gunboat', 'leech', 'minelayer', 'lancer'], firstWave: 55, waveInterval: 60, waveBudget: 6, waveGrowth: 0.9, maxWaveBudget: 18,
-    boss: 'matriarch', threatPerOre: 0.06, threatPerKill: 0.9, bg: ['#04141c', '#0b3a4a'], license: 'licGlass',
+    enemies: ['gnat', 'gunboat', 'leech', 'minelayer', 'lancer'], contracts: 6, waveBudget: 6, waveGrowth: 0.9, contractPay: 1100,
+    boss: 'matriarch', bg: ['#04141c', '#0b3a4a'], license: 'licGlass',
   },
   {
     id: 'pale', name: 'The Deep Pale', blurb: 'Quiet, cold, and full of things that dislike quiet and cold.',
     radius: 4800, asteroids: 160, hardness: 4.6, ores: { lumen: 0.4, void: 0.6 }, enemyScale: 3.6,
-    enemies: ['gunboat', 'leech', 'minelayer', 'warden', 'lancer'], firstWave: 50, waveInterval: 55, waveBudget: 9, waveGrowth: 1.1, maxWaveBudget: 26,
-    boss: 'mildred', threatPerOre: 0.03, threatPerKill: 0.7, bg: ['#0c0c14', '#2b2340'], license: 'licPale',
+    enemies: ['gunboat', 'leech', 'minelayer', 'warden', 'lancer'], contracts: 6, waveBudget: 9, waveGrowth: 1.1, contractPay: 2800,
+    boss: 'mildred', bg: ['#0c0c14', '#2b2340'], license: 'licPale',
   },
   {
     id: 'gorvox', name: 'Gorvox System', blurb: 'Home of Gorvox IV, a planet nobody will miss. Probably.',
     radius: 5200, asteroids: 130, hardness: 5.5, ores: { void: 1 }, enemyScale: 4.5,
-    enemies: ['gunboat', 'warden', 'minelayer', 'lancer', 'gnat'], firstWave: 45, waveInterval: 55, waveBudget: 10, waveGrowth: 1.2, maxWaveBudget: 30,
-    boss: null, planet: true, threatPerOre: 0, threatPerKill: 0, bg: ['#160812', '#40142a'], license: 'licGorvox',
+    enemies: ['gunboat', 'warden', 'minelayer', 'lancer', 'gnat'], contracts: 8, waveBudget: 10, waveGrowth: 1.2, contractPay: 6000,
+    boss: null, planet: true, bg: ['#160812', '#40142a'], license: 'licGorvox',
   },
 ];
+
+// Combat contracts: the player starts each wave (G / HUD button). Wave k (0-based)
+// has budget waveBudget + waveGrowth*k and pays contractPay * payGrowth^k.
+// After the last wave the sector boss can be challenged. Finished boards can be
+// re-run for farming at repeatPay of the original fee.
+export const CONTRACTS = {
+  payGrowth: 1.3,
+  repeatPay: 0.6,
+  // light ambient pirates while mining (outside the outpost safe zone)
+  ambientEvery: [110, 170],  // seconds between ambient visits
+  ambientFirst: 150,         // grace period after launch
+  ambientBudget: 1.5,        // only the cheapest enemies of the sector, 1-2 ships
+};
 
 export const ASTEROIDS = {
   minRadius: 18, maxRadius: 78,

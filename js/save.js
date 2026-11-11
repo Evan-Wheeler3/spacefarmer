@@ -13,7 +13,7 @@ export function newSave() {
     cargo: {},
     cargoUnits: 0,
     bossKills: {},
-    threat: {},
+    contracts: {},
     planetsDestroyed: 0,
     blueprints: [],
     stats: { playTime: 0, oreMined: 0, earned: 0, kills: 0, deaths: 0, bosses: 0, rocks: 0 },

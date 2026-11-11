@@ -15,7 +15,7 @@ import { money, fmt, pick, clamp, TAU } from './util.js';
 import { P_GLOW } from './particles.js';
 import { EnemySystem } from './enemies.js';
 import { PlanetSystem } from './planet.js';
-import { renderResearch, renderStarMap, goalCard } from './ui/research.js';
+import { renderResearch, renderStarMap, goalCard, contractCard } from './ui/research.js';
 import { Tutorial } from './ui/tutorial.js';
 import { Audio } from './audio.js';
 
@@ -46,6 +46,7 @@ export class Game {
     this.hangar.addTab('research', 'Research', (c) => renderResearch(this, c), 'shipyard');
     this.hangar.addTab('map', 'Star Map', (c) => renderStarMap(this, c), 'research');
     this.goalCard = () => goalCard(this);
+    this.contractCard = () => contractCard(this);
     this.stars = new Starfield(SECTORS[this.save ? this.save.sector : 0].bg, 7);
     Input.init(canvas);
     addEventListener('resize', () => this.resize());
@@ -172,13 +173,14 @@ export class Game {
           this.newGame();
         } }, 'NEW GAME')),
       has ? el('div', { class: 'dim' }, `${money(this.save.credits)} · ${SECTORS[this.save.sector].name} · ${this.save.planetsDestroyed} planet(s) destroyed`) : '',
-      el('div', { class: 'title-help dim' }, 'W/S thrust · A/D turn · Q/E strafe · Space mine/fire · F dock · Esc pause'));
+      el('div', { class: 'title-help dim' }, 'W/S thrust · A/D turn · Q/E strafe · Space mine/fire · G start a contract · F dock · Esc pause'));
     this.overlay = t;
     this.ui.append(t);
   }
 
   clearOverlays() {
     document.body.classList.remove('flying');
+    this.enemySystem && this.enemySystem.panelUpdate();
     if (this.overlay) { this.overlay.remove(); this.overlay = null; }
     this.hangar.close();
   }

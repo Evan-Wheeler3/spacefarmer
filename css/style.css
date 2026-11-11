@@ -191,3 +191,13 @@ body:not(.flying) .toast-wrap { top: auto; bottom: 22px; left: auto; right: 22px
 .tut-head b { color: var(--money); letter-spacing: 1px; text-transform: uppercase; flex: 1; }
 .tut-step { font-size: 11px; color: var(--dim); }
 @media (max-width: 1150px) { .h-title .dim { display: none; } }
+
+/* ---------- contract panel ---------- */
+.contract { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; background: rgba(10,14,30,0.86); border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px 6px 14px; font-size: 13px; white-space: nowrap; max-width: calc(100vw - 420px); z-index: 20; }
+.contract .c-title { font-weight: 900; letter-spacing: 1px; color: #ff9f8a; }
+.contract .c-title.boss { color: #ff3cac; }
+.contract .c-desc { overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.contract .c-rate { border: 1px solid; border-radius: 10px; padding: 0 8px; font-weight: 800; font-size: 12px; }
+.tut-flight { top: 58px; }
+.tbl tr.c-done td { color: var(--dim); }
+.tbl tr.c-next td { background: rgba(255,214,10,0.07); font-weight: 700; }

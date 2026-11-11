@@ -11,15 +11,15 @@ import { SECTORS, ENEMIES, BOSSES, ORES, PRESETS, ECONOMY, UPGRADES, PLANETS, PA
 import { analyze, Design } from '../js/shipdesign.js';
 import { upgradeEffects, canBuyUpgrade, oreFromDamage, droneIncomePerMinute, planetReward, frameSize, partUnlocked, UPGRADE_BY_ID } from '../js/economy.js';
 import { rng } from '../js/util.js';
+import { nextContract, rate } from '../js/contracts.js';
+
+// The bot takes a contract when its ship rates it at or below this risk (Fair).
+const TAKE_RISK = 0.6;
 
 const args = process.argv.slice(2);
 const RUNS = Number(args[args.indexOf('--runs') + 1]) || 1;
 const VERBOSE = RUNS === 1;
 
-const WAVE_COST = { gnat: 1, lancer: 1.5, gunboat: 3, leech: 2, minelayer: 4, warden: 6 };
-// effective damage-per-second each enemy lands on an average pilot (accuracy folded in)
-const ENEMY_DPS = { gnat: 1.6, lancer: 2.4, gunboat: 5, leech: 0.5, minelayer: 2.2, warden: 4 };
-const ACCURACY = 0.6;      // fraction of player weapon dps that connects
 const MINING_EFF = 0.65;   // time actually spent with a laser on a rock (playtest-calibrated)
 
 // The plan a sensible player follows. Items: research id, {design}, {jump}, {planet}
@@ -91,42 +91,6 @@ function simulate(seed) {
     }
   }
 
-  function waveStats(sec, n) {
-    const budget = Math.min(sec.maxWaveBudget, sec.waveBudget + sec.waveGrowth * n);
-    const pool = sec.enemies;
-    let hp = 0, dps = 0, bounty = 0, count = 0, b = budget;
-    let k = 0;
-    while (b > 0.5 && k < 60) {
-      const affordable = pool.filter((e) => WAVE_COST[e] <= b + 0.01);
-      if (!affordable.length) break;
-      const e = affordable[Math.floor(R() * affordable.length)];
-      const d = ENEMIES[e];
-      hp += d.hp * sec.enemyScale;
-      dps += ENEMY_DPS[e] * (1 + (sec.enemyScale - 1) * 0.6);
-      bounty += Math.round(d.bounty * (1 + (sec.enemyScale - 1) * 0.8));
-      count++; b -= WAVE_COST[e]; k++;
-    }
-    return { hp, dps, bounty, count };
-  }
-
-  function bossThreatDps(boss) {
-    // average sustained incoming dps across phases (hit rate ~25%) plus adds
-    let total = 0;
-    for (const ph of boss.phases) {
-      let d = 0;
-      for (const a of ph.attacks) {
-        if (a.type === 'spread') d += (a.damage * Math.min(3, a.count)) / a.every * 0.35;
-        if (a.type === 'ring') d += (a.damage * 2) / a.every * 0.4;
-        if (a.type === 'beam') d += (a.damage * a.duration * 0.3) / a.every;
-        if (a.type === 'charge') d += a.damage * 0.5 / a.every;
-        if (a.type === 'missiles') d += (a.damage * a.count * 0.35) / a.every;
-        if (a.type === 'spawn') d += (ENEMY_DPS[a.enemy] * a.count * 4) / a.every;
-      }
-      total += d;
-    }
-    return total / boss.phases.length;
-  }
-
   tryPlan();
   mark('start');
   const MAX_T = 6 * 3600;
@@ -144,56 +108,34 @@ function simulate(seed) {
     let value = 0;
     for (const k in sec.ores) value += sec.ores[k] * ORES[k].value;
     let income = ore * value * f.sellMult;
-    // ---- waves during the trip
-    const wavesThisTrip = (T - 8) / sec.waveInterval;
-    let bounty = 0, damage = 0, fightTime = 0, kills = 0, died = false;
-    for (let w = 0; w < Math.floor(wavesThisTrip + R()); w++) {
-      const n = (waveN[sec.id] = (waveN[sec.id] || 0) + 1);
-      const ws = waveStats(sec, n - 1);
-      const ttk = ws.hp / Math.max(1, a.dps * ACCURACY);
-      fightTime += ttk;
-      const dmg = Math.max(0, ws.dps * ttk - a.shieldRegen * ttk) ;
-      damage += dmg;
-      if (dmg > ehp * 0.75) { died = true; break; }
-      bounty += ws.bounty; kills += ws.count;
+    // ---- contracts: take the ones this ship rates Easy/Fair (a few per trip)
+    let fightTime = 0, bonus = 0, damage = 0;
+    save.contracts = save.contracts || {};
+    for (let n = 0; n < 3; n++) {
+      const c = nextContract(save, save.sector);
+      if (!c) break;
+      const foe = c.kind === 'wave' ? c.wave : c.foe;
+      const r = rate(a, foe);
+      if (r.risk > TAKE_RISK || r.ttk > 240) break;
+      fightTime += r.ttk + 15;
+      damage += r.risk * (a.hp * 0.6 + a.shield);
+      bonus += c.pay + (c.kind === 'wave' ? c.wave.bounty : 0);
+      const bd = (save.contracts[sec.id] = save.contracts[sec.id] || { k: 0, cleared: 0 });
+      if (c.kind === 'wave') { bd.k++; if (bd.k >= sec.contracts && !sec.boss) { bd.k = 0; bd.cleared++; } }
+      else {
+        bd.k = 0; bd.cleared++;
+        const first = !save.bossKills[c.boss];
+        save.bossKills[c.boss] = (save.bossKills[c.boss] || 0) + 1;
+        if (first) mark(`DEFEATED ${BOSSES[c.boss].name} (fight ${Math.round(r.ttk)}s, risk ${r.risk.toFixed(2)})`);
+      }
     }
     const tripTime = T + fightTime;
     t += tripTime;
     trips++;
     save.credits += (droneIncomePerMinute(save.upgrades) * tripTime) / 60;
-    const shipValue = a.value;
-    if (died) {
-      deaths++;
-      save.credits -= Math.min(save.credits * ECONOMY.insuranceCap, shipValue * 0.5 * ECONOMY.repairCostFactor);
-      mark(`  died to a wave (sector ${sec.name})`);
-    } else {
-      save.credits += income + bounty;
-      save.credits -= Math.min(save.credits, (damage / Math.max(1, a.hp)) * shipValue * ECONOMY.repairCostFactor);
-      save.credits -= a.fuel * 0.5 * ECONOMY.refuelCostPerUnit;
-      // threat & boss
-      if (sec.boss) {
-        save.threat[sec.id] = (save.threat[sec.id] || 0) + ore * sec.threatPerOre + kills * sec.threatPerKill;
-        if (save.threat[sec.id] >= 100) {
-          const boss = BOSSES[sec.boss];
-          const ttk = boss.hp / Math.max(1, a.dps * ACCURACY);
-          const incoming = Math.max(0, bossThreatDps(boss) - a.shieldRegen) * ttk;
-          t += Math.min(ttk, 240);
-          if (incoming < ehp * 0.85 && ttk < 240) {
-            save.credits += boss.bounty;
-            save.credits -= Math.min(save.credits, (incoming / a.hp) * shipValue * ECONOMY.repairCostFactor);
-            save.threat[sec.id] = 0;
-            const first = !save.bossKills[sec.boss];
-            save.bossKills[sec.boss] = (save.bossKills[sec.boss] || 0) + 1;
-            if (first) mark(`DEFEATED ${boss.name} (fight ${Math.round(ttk)}s, took ${Math.round(incoming)} of ${Math.round(ehp)} ehp)`);
-          } else {
-            deaths++;
-            save.threat[sec.id] = 60;
-            save.credits -= Math.min(save.credits * ECONOMY.insuranceCap, shipValue * 0.5 * ECONOMY.repairCostFactor);
-            mark(`  lost to ${boss.name} (needed ${Math.round(ttk)}s, would take ${Math.round(incoming)} dmg vs ${Math.round(ehp)} ehp)`);
-          }
-        }
-      }
-    }
+    save.credits += income + bonus;
+    save.credits -= Math.min(save.credits, (damage / Math.max(1, a.hp)) * a.value * ECONOMY.repairCostFactor);
+    save.credits -= a.fuel * 0.5 * ECONOMY.refuelCostPerUnit;
     const r = tryPlan();
     if (r === 'planet') {
       const d = stats();

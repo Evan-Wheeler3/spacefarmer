@@ -28,13 +28,19 @@ drawn procedurally and all audio is synthesized with WebAudio.
   behind them to vent. Lasers, railguns and the Planet Cracker need a clear cell in front.
 - **Death** loses your cargo; insurance rebuilds the Command Core for free and everything else stays
   in the condition it was in (repair at the Market).
-- **Waves** run on a per-sector clock that pauses inside the outpost safe zone. Mining and kills fill a
-  **threat meter**; at 100% the sector boss arrives. Walking away from a boss fight drops threat to 60%.
+- **You choose when to fight.** Each sector has a board of paid **combat contracts** (6 waves, 8 in
+  Gorvox). Fly out of the outpost safe zone and press **G** (or click *Start wave* at the top of the
+  screen). Each wave pays a fee that grows by ×1.3 per wave, plus bounties, and is rated
+  *Easy / Fair / Hard / Deadly* for your current ship. After the last wave you can challenge the sector
+  boss. Docking, recalling or dying abandons the contract, but your place on the board is kept.
+  Cleared boards can be re-run at 60% pay.
+- **Mining is mostly peaceful:** at most 1–2 weak pirates drop by every couple of minutes, and none
+  appear inside the safe zone.
 - **Sectors** are separate jump destinations, each with its own outpost; harder rocks hold richer ore.
 - **Autosave** to `localStorage` every 15 s, on dock, on purchase, and when the tab is hidden.
   **Drone Bay** income keeps accruing while you're away (capped at 4 h).
-- **Target pacing** (economy bot, optimal play): first purchase ≈1 min, first boss ≈8 min, planet
-  destroyed ≈1.5 h. Expect 1.5–2.5 h for a human.
+- **Target pacing** (economy bot, optimal play, fights only Easy/Fair contracts): first boss ≈5 min,
+  planet destroyed ≈1h10m. Expect 1.5–2.5 h for a human.
 - Desktop first. Gamepad is supported in flight (standard mapping). The builder is mouse-driven.
 
 ## Controls
@@ -44,6 +50,7 @@ drawn procedurally and all audio is synthesized with WebAudio.
 | W / S | thrust forward / reverse | Left click / drag | place part (drag paints) |
 | A / D | rotate | Right click / drag | remove part |
 | Q / E | strafe | R or mouse wheel | rotate part |
+| G | start the next combat contract | | |
 | Space | fire mining lasers and railguns (turrets aim and fire themselves) | M | mirror mode |
 | F | dock (near the outpost, moving slowly) | Middle click | pick up a placed part's type |
 | R (hold) | recall to the outpost | Ctrl+Z / Ctrl+Y | undo / redo |
@@ -54,7 +61,7 @@ drawn procedurally and all audio is synthesized with WebAudio.
 | F3 | physics telemetry | | |
 | Esc | pause | | |
 
-**Gamepad:** left stick thrust, right stick turn, RT or A fire, LB/RB strafe, Y charge the cracker, B dock.
+**Gamepad:** left stick thrust, right stick turn, RT or A fire, LB/RB strafe, X start contract, Y charge the cracker, B dock.
 
 ## The loop
 
@@ -65,7 +72,7 @@ drawn procedurally and all audio is synthesized with WebAudio.
    vs gyro authority, power balance, fuel endurance, mining rate and DPS, with diagnostics that warn
    about blocked exhausts, detached parts, power deficits, and ships that *will* spin.
 4. **Research** better prices, mining, health, weapons, part unlocks, bigger frames, and jump licenses.
-5. **Survive waves, fill the threat meter, beat the boss**, and unlock the next sector.
+5. **Take combat contracts (G) when your ship is ready, beat the boss**, and unlock the next sector.
 6. **Build a Planet Cracker**, jump to Gorvox, aim at the planet and hold **C**.
 
 The **Road to Doomsday** card in the Market always shows the next step.
@@ -107,8 +114,8 @@ colour. To give the part its own icon, add a `case` to `drawPart()` in [`js/rend
 one it draws as a coloured plate.
 
 **A new enemy:** add an entry to `ENEMIES` with an `ai` key (`orbit`, `ram`, `standoff`, `leech`,
-`mines`, `missiles`), then list it in a sector's `enemies` and give it a wave cost in `WAVE_COST` in
-[`js/enemies.js`](js/enemies.js). A new behavior is one more `case` in `EnemySystem.ai()`.
+`mines`, `missiles`), a wave `cost` and a `threat` (estimated damage/s, used for difficulty ratings), then
+list it in a sector's `enemies`. A new behavior is one more `case` in `EnemySystem.ai()` in [`js/enemies.js`](js/enemies.js).
 
 **A new boss:** add an entry to `BOSSES` with `phases` (each a list of attacks:
 `spread | ring | spawn | charge | beam | missiles`) and set it as a sector's `boss`.
@@ -140,7 +147,8 @@ fast-forwards game time. Its measured trip times calibrate the economy bot's mod
 | `js/shipdesign.js` | blueprint grid, placement rules, connectivity, mass/COM/inertia, builder analysis |
 | `js/ship.js` | runtime rigid body: thruster allocation, gyro flight assist, power, weapons, damage, detachment |
 | `js/world.js` | sector: asteroids, ore pickups, projectiles, collisions (spatial hash), outpost |
-| `js/enemies.js` | waves, AI behaviors, bosses, mines, missiles, beams |
+| `js/enemies.js` | contract waves, ambient pirates, AI behaviors, bosses, mines, missiles, beams |
+| `js/contracts.js` | contract wave lists, payouts and difficulty ratings (shared with the bot) |
 | `js/planet.js` | the planet, cracker charge, destruction cinematic and reward |
 | `js/economy.js` | pure rules shared with the bot: prices, research effects, rewards |
 | `js/render.js` | procedural part icons, ship sprites, asteroids, starfield |

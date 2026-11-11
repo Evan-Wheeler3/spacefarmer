@@ -186,6 +186,7 @@ export class World {
     if (o.kind === 'rock') {
       o.hp -= mineDmg;
       o.hitT = 0.12;
+      o.seenT = 2;
       o.oreAcc += oreFromDamage(mineDmg, this.sector.hardness, this.game.levels);
       while (o.oreAcc >= ASTEROIDS.chunkEvery) {
         o.oreAcc -= ASTEROIDS.chunkEvery;
@@ -270,6 +271,7 @@ export class World {
       r.x += r.vx * dt; r.y += r.vy * dt; r.angle += r.av * dt;
       r.vx *= 1 - 0.05 * dt; r.vy *= 1 - 0.05 * dt;
       if (r.hitT > 0) r.hitT -= dt;
+      if (r.seenT > 0) r.seenT -= dt;
       const d = Math.hypot(r.x, r.y);
       if (d > this.sector.radius) { r.vx -= (r.x / d) * 20 * dt; r.vy -= (r.y / d) * 20 * dt; }
       if (d < ASTEROIDS.innerClear * 0.6) { r.vx += (r.x / d) * 30 * dt; r.vy += (r.y / d) * 30 * dt; }
@@ -444,6 +446,16 @@ export class World {
         ctx.globalAlpha = 1;
       }
       ctx.restore();
+      if (r.seenT > 0) {
+        const k = Math.max(0, r.hp / r.maxHp);
+        ctx.globalAlpha = Math.min(1, r.seenT);
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+        ctx.beginPath(); ctx.arc(r.x, r.y, r.r + 8, 0, TAU); ctx.stroke();
+        ctx.strokeStyle = ORES[r.ore].glow;
+        ctx.beginPath(); ctx.arc(r.x, r.y, r.r + 8, -Math.PI / 2, -Math.PI / 2 + TAU * k); ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
     }
     // pickups
     ctx.globalCompositeOperation = 'lighter';

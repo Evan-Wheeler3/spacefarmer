@@ -103,6 +103,7 @@ export class Game {
 
   repair() {
     const d = Design.fromJSON(this.save.design);
+    if (!d.damaged()) return;
     let spent = 0;
     // fix the core first, then wrecks, then the most damaged
     const order = d.entries.slice().sort((a, b) => (PARTS[b.part].core ? 1 : 0) - (PARTS[a.part].core ? 1 : 0) || (a.hp ?? 1) - (b.hp ?? 1));
@@ -336,7 +337,7 @@ export class Game {
       if (Input.hit('KeyT')) { ship.assist = !ship.assist; toast('Flight assist ' + (ship.assist ? 'ON' : 'OFF — pure Newtonian. Good luck.')); }
       if (Input.hit('F3')) { this.settings.telemetry = !this.settings.telemetry; }
       if (Input.mouse.wheel) this.cam.userZoom = clamp(this.cam.userZoom * (Input.mouse.wheel > 0 ? 0.9 : 1.1), 0.5, 2);
-      ship.input = ship.dead ? { thrust: 0, strafe: 0, turn: 0 } : Input.flight();
+      ship.input = ship.dead ? { thrust: 0, strafe: 0, turn: 0 } : this.autopilot ? this.autopilot(ship, this.world) : Input.flight();
       // docking
       const dSt = Math.hypot(ship.x - this.world.station.x, ship.y - this.world.station.y);
       this.canDock = !ship.dead && dSt < ECONOMY.dockRadius + ship.radius && Math.hypot(ship.vx, ship.vy) < ECONOMY.dockMaxSpeed;

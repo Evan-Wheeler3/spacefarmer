@@ -288,7 +288,7 @@ export const PLANETS = {
 // Economy
 // ---------------------------------------------------------------------
 export const ECONOMY = {
-  startCredits: 250,
+  startCredits: 150,
   refuelCostPerUnit: 0.05,
   repairCostFactor: 0.35,          // fraction of part cost per 100% damage
   destroyedPartRepairFactor: 0.6,  // fraction of part cost to rebuild a lost part
@@ -361,7 +361,8 @@ export const DRONES = { creditsPerMinutePerLevel: [0, 40, 110, 260, 600, 1300] }
 // Pre-built ships. Cells are [part, x, y, rot] relative to grid center.
 export const PRESETS = {
   pebble: { name: 'Pebble', desc: 'The starter. Reliable, modest, beige in spirit.', cells: [
-    ['laser', 0, -2, 0], ['hull', -1, -1, 0], ['cargo', 0, -1, 0], ['turret', 1, -1, 0],
+    ['thruster', -1, -2, 2], ['laser', 0, -2, 0], ['thruster', 1, -2, 2],
+    ['hull', -1, -1, 0], ['cargo', 0, -1, 0], ['turret', 1, -1, 0],
     ['fuelTank', -1, 0, 0], ['core', 0, 0, 0], ['cargo', 1, 0, 0],
     ['thruster', -1, 1, 0], ['reactor', 0, 1, 0], ['thruster', 1, 1, 0],
   ] },

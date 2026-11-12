@@ -511,6 +511,22 @@ export class World {
     ctx.globalCompositeOperation = 'source-over';
   }
 
+  // faint ring showing the ore magnet's reach whenever ore is inside it
+  drawMagnet(ctx, ship, time) {
+    if (!ship || ship.dead || !ship.magnet) return;
+    const R = ship.magnet + Math.max(18, ship.radius * 0.55);
+    let near = false;
+    for (const p of this.pickups) if ((p.x - ship.x) ** 2 + (p.y - ship.y) ** 2 < R * R) { near = true; break; }
+    this._magA = (this._magA || 0) + ((near ? 1 : 0) - (this._magA || 0)) * 0.08;
+    if (this._magA < 0.02) return;
+    ctx.strokeStyle = `rgba(201,162,122,${0.28 * this._magA})`;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 10]);
+    ctx.lineDashOffset = -time * 30;
+    ctx.beginPath(); ctx.arc(ship.x, ship.y, R, 0, TAU); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
   drawShield(ctx, ship, time) {
     if (!ship || ship.dead || ship.shieldMax <= 0 || ship.shield <= 0) return;
     const k = ship.shield / ship.shieldMax;

@@ -52,7 +52,7 @@ export const PARTS = {
   core: {
     name: 'Command Core', cat: 'command', w: 1, h: 1, mass: 4, cost: 0, hp: 90,
     desc: 'Contains you, a chair, and a cup holder. Lose this and the trip is over.',
-    core: true, gen: 3, battery: 25, fuel: 25, torque: 52000, cargo: 6, magnet: 70,
+    core: true, gen: 3, battery: 25, fuel: 25, torque: 52000, cargo: 6, magnet: 120,
     rcsThrust: 380, unique: true, unlock: null,
   },
   hull: {
@@ -330,8 +330,8 @@ export const UPGRADES = [
     cost: [220, 600, 1500, 3800, 9000], effect: { sellMult: 0.12 }, requires: [] },
   { id: 'optics',   branch: 'Industry', name: 'Laser Optics', desc: '+20% mining damage per level.',
     cost: [300, 900, 2400, 6500, 16000], effect: { miningMult: 0.2 }, requires: [] },
-  { id: 'tractor',  branch: 'Industry', name: 'Tractor Coils', desc: 'Unlocks the Tractor Coil part.',
-    cost: [700], effect: {}, requires: ['brokers'] },
+  { id: 'tractor',  branch: 'Industry', name: 'Tractor Coils', desc: 'Unlocks the Tractor Coil part; every level pulls ore from 40% further away.',
+    cost: [700, 2500, 8000], effect: { magnetMult: 0.4 }, requires: ['brokers'] },
   { id: 'refinery', branch: 'Industry', name: 'Onboard Refinery', desc: '+15% ore per rock per level.',
     cost: [1200, 3500, 9000, 22000], effect: { yieldMult: 0.15 }, requires: ['optics'] },
   { id: 'drones',   branch: 'Industry', name: 'Drone Bay', desc: 'Drones mine while you do anything else. Passive income, also offline.',

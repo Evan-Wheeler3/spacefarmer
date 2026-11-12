@@ -87,7 +87,7 @@ export class Ship {
       if (d.rcsThrust) rcs += d.rcsThrust;
     }
     this.fuelMax = fuel; this.energyMax = bat; this.cargoMax = cargo; this.gen = gen;
-    this.shieldMax = shield; this.shieldRegen = regen; this.gyroMax = gyro; this.magnet = magnet; this.rcs = rcs;
+    this.shieldMax = shield; this.shieldRegen = regen; this.gyroMax = gyro; this.magnet = magnet * this.fx.magnetMult; this.rcs = rcs;
     this.fuel = Math.min(this.fuel ?? fuel, fuel);
     this.energy = Math.min(this.energy ?? bat, bat);
     this.shield = Math.min(this.shield ?? shield, shield);

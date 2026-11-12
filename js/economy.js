@@ -7,7 +7,7 @@ export const UPGRADE_BY_ID = Object.fromEntries(UPGRADES.map((u) => [u.id, u]));
 export function upgradeEffects(levels = {}) {
   const fx = {
     sellMult: 1, miningMult: 1, yieldMult: 1, droneRate: 0, frame: 0, hpMult: 1, fuelEff: 1,
-    damageMult: 1, rateMult: 1, shieldMult: 1, chargeEff: 1, planetMult: 1,
+    damageMult: 1, rateMult: 1, shieldMult: 1, chargeEff: 1, planetMult: 1, magnetMult: 1,
   };
   for (const u of UPGRADES) {
     const lv = levels[u.id] || 0;

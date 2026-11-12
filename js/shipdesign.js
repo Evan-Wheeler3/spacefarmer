@@ -253,7 +253,7 @@ export function analyze(design, levels = {}, opts = {}) {
     thrustFwd: fwd.F, thrustBack: back.F, thrustLeft: left.F, thrustRight: right.F,
     accel, accelLoaded, twr, turnRate, turn90, angAccel, gyroTorque, imbalance, fwdTorque: fwd.T,
     gen, peakDraw, battery, fuel, burn: fwd.burn, endurance, cargo, mining, dps, shield, shieldRegen,
-    magnet, hp, value, crackers, warnings, bad, conn, thrusters, disconnected,
+    magnet: magnet * fx.magnetMult, hp, value, crackers, warnings, bad, conn, thrusters, disconnected,
     launchable: hasCore && fwd.F - rcs > 0 && !design.entries.some((e) => PARTS[e.part].core && e.hp === 0),
   };
 }

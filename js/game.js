@@ -457,6 +457,7 @@ export class Game {
       world.drawLasers(ctx, this.ship, this.time);
       if (!this.ship.dead) drawShip(ctx, this.ship, this.time);
       world.drawShield(ctx, this.ship, this.time);
+      world.drawMagnet(ctx, this.ship, this.time);
     }
     for (const s of sys) s.draw && s.draw(ctx, cam);
     world.drawBullets(ctx, cam);

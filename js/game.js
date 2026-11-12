@@ -11,6 +11,7 @@ import { Hangar } from './ui/hangar.js';
 import { el, toast, popEl, modal } from './ui/dom.js';
 import { loadSave, newSave, writeSave, wipeSave, SANDBOX_KEY } from './save.js';
 import { Dev } from './ui/dev.js';
+import { TouchControls } from './ui/touch.js';
 import { sellValue, offlineEarnings, droneIncomePerMinute, sectorUnlocked } from './economy.js';
 import { money, fmt, pick, clamp, TAU } from './util.js';
 import { P_GLOW } from './particles.js';
@@ -42,10 +43,12 @@ export class Game {
     this.planetSystem = new PlanetSystem(this);
     this.tutorial = new Tutorial(this);
     this.dev = new Dev(this);
+    this.touchControls = new TouchControls(this);
     this.systems.push(this.enemySystem, this.planetSystem, this.tutorial, this.dev);
     this.audio = new Audio();
     const unlock = () => { this.audio.unlock(); this.audio.setVolume(this.settings.volume, this.settings.music); };
     addEventListener('pointerdown', unlock);
+    addEventListener('touchend', unlock);
     addEventListener('keydown', unlock);
     this.hangar.addTab('research', 'Research', (c) => renderResearch(this, c), 'shipyard');
     this.hangar.addTab('map', 'Star Map', (c) => renderStarMap(this, c), 'research');
@@ -179,7 +182,7 @@ export class Game {
         } }, 'NEW GAME'),
         el('button', { class: 'btn big-btn', title: 'Separate save slot with every upgrade, cheats and spawn tools. Never touches your real progress.', onclick: () => this.startSandbox() }, 'DEV SANDBOX')),
       has ? el('div', { class: 'dim' }, `${money(this.save.credits)} · ${SECTORS[this.save.sector].name} · ${this.save.planetsDestroyed} planet(s) destroyed`) : '',
-      el('div', { class: 'title-help dim' }, 'W/S thrust · A/D turn · Q/E strafe · Space mine/fire · G start a contract · F dock · Esc pause'));
+      el('div', { class: 'title-help dim' }, this.touch ? 'Left thumb: drag to fly · Right thumb: FIRE · tap DOCK at the outpost' : 'W/S thrust · A/D turn · Q/E strafe · Space mine/fire · G start a contract · F dock · Esc pause'));
     this.overlay = t;
     this.ui.append(t);
   }
@@ -361,6 +364,7 @@ export class Game {
 
   update(dt) {
     this.time += dt;
+    this.touchControls.update();
     if (this.save && this.state !== 'title') {
       this.save.stats.playTime += dt;
       const dpm = droneIncomePerMinute(this.save.upgrades);
@@ -400,7 +404,7 @@ export class Game {
       if (this.canDock && (Input.hit('KeyF') || Input.padPressed.has(1))) { this.dock(); return; }
       // recall: hold R (or chosen from the pause menu)
       if (!ship.dead) {
-        if (Input.down('KeyR') || this.recallAuto) {
+        if (Input.down('KeyR') || Input.touchState.recall || this.recallAuto) {
           this.recall += dt;
           if (this.recall >= 2) { this.world.particles.ring(ship.x, ship.y, 200, '#7df9ff', 0.5, 4); this.dock(true); return; }
         } else this.recall = Math.max(0, this.recall - dt * 3);
@@ -466,7 +470,7 @@ export class Game {
     ctx.fillText(`${SECTORS[this.save.sector].name.toUpperCase()} · cargo worth ${money(cv)}`, 16, 50);
     // centre prompts
     ctx.textAlign = 'center';
-    if (this.canDock) {
+    if (this.canDock && !this.touch) {
       ctx.font = '700 18px "Trebuchet MS", sans-serif';
       ctx.fillStyle = `rgba(125,249,255,${0.7 + Math.sin(this.time * 6) * 0.3})`;
       ctx.fillText('[F] DOCK AT OUTPOST', this.W / 2, this.H - 90);

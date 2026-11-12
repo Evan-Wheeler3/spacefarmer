@@ -410,7 +410,7 @@ export class PlanetSystem {
     }
     ctx.font = '700 13px "Trebuchet MS", sans-serif';
     ctx.fillStyle = inRange && aligned ? '#2ee6a6' : '#ff3cac';
-    const msg = !inRange ? `Fly within ${part.def.cracker.range}px of ${p.name} (${Math.max(0, Math.round(a.dist))}px)` : !aligned ? `Point the Cracker at ${p.name}` : `In position — HOLD [C] to charge`;
+    const msg = !inRange ? `Fly within ${part.def.cracker.range}px of ${p.name} (${Math.max(0, Math.round(a.dist))}px)` : !aligned ? `Point the Cracker at ${p.name}` : `In position — HOLD ${g.touch ? 'CRACK' : '[C]'} to charge`;
     ctx.fillText(msg, W / 2, H - 70);
   }
 }

@@ -81,6 +81,35 @@ drawn procedurally and all audio is synthesized with WebAudio.
 
 The **Road to Doomsday** card in the Market always shows the next step.
 
+## Playing on iPhone / iPad
+
+The game runs in mobile Safari with touch controls (landscape only; portrait asks you to rotate).
+
+1. On your Mac, start the server: `node tools/serve.mjs`. It prints an address like
+   `On your phone (same Wi-Fi): http://192.168.1.23:8000`.
+2. On the iPhone (same Wi-Fi network), open that address in Safari.
+3. Optional: **Share → Add to Home Screen** to launch it fullscreen like an app.
+
+If the phone can't connect, macOS may be blocking incoming connections: allow `node` when the
+firewall asks, or check System Settings → Network → Firewall. To play away from home, host the
+folder on any static host (GitHub Pages, Netlify, Vercel); no build step is needed.
+
+**Touch controls**
+
+| Flight | |
+|---|---|
+| Left thumb, drag anywhere on the left half | point-to-fly: the ship turns toward the stick and thrusts when facing it |
+| FIRE (hold) | mining lasers and railguns |
+| ◀ ▶ | strafe |
+| DOCK | appears near the outpost |
+| ⟲ (hold) | recall to the outpost |
+| ❚❚ / A | pause / flight assist on-off |
+| CRACK (hold) | appears when your ship has a Planet Cracker |
+| Start wave (top of screen) | begin the next contract |
+
+**Shipyard:** pick a tool (✚ Place, ✖ Erase or ✋ Pan) and tap or drag on the grid. Use two fingers to
+pinch-zoom and pan. Tapping a part in the palette selects it and shows its stats.
+
 ## Dev sandbox
 
 **DEV SANDBOX** on the title screen opens a separate save slot (`spacefarmer.sandbox.v1`) that never

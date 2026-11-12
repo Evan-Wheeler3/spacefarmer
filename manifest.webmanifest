@@ -1,0 +1,15 @@
+{
+  "name": "Space Farmer",
+  "short_name": "Space Farmer",
+  "description": "Mine rocks. Bolt on guns. Eventually, delete a planet.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#070a16",
+  "theme_color": "#070a16",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

@@ -7,6 +7,7 @@ export const Input = {
   padPressed: new Set(),
   _padPrev: [],
   enabled: true,
+  touchState: null,
 
   init(canvas) {
     addEventListener('keydown', (e) => {
@@ -52,6 +53,11 @@ export const Input = {
     let strafe = k('KeyE') - k('KeyQ');
     let fire = this.down('Space');
     let crack = this.down('KeyC');
+    const t = this.touchState;
+    if (t) {
+      thrust = thrust || t.thrust; turn = turn || t.turn; strafe = strafe || t.strafe;
+      fire = fire || t.fire; crack = crack || t.crack;
+    }
     if (this.pad) {
       thrust = thrust || -this.padAxis(1);
       turn = turn || this.padAxis(2) || this.padAxis(0);

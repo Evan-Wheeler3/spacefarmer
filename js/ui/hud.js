@@ -22,11 +22,11 @@ function bar(ctx, x, y, w, h, frac, col, label, value) {
 export function drawFlightHud(ctx, game, W, H) {
   const ship = game.ship;
   if (!ship) return;
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
   const pad = 16;
 
   // ---- status bars (bottom-left)
-  const bw = 230, bh = 17;
+  const touch = !!game.touch;
+  const bw = touch ? 170 : 230, bh = touch ? 14 : 17;
   let y = H - pad - bh;
   const hullFrac = 1 - ship.damageFraction();
   const rows = [
@@ -36,16 +36,22 @@ export function drawFlightHud(ctx, game, W, H) {
     ['CARGO', ship.cargoMax ? ship.cargoUnits / ship.cargoMax : 0, '#c9a27a', Math.floor(ship.cargoUnits) + ' / ' + ship.cargoMax],
   ];
   if (ship.shieldMax > 0) rows.push(['SHIELD', ship.shield / ship.shieldMax, '#6aa8ff', Math.floor(ship.shield) + '']);
-  for (const r of rows) { bar(ctx, pad, y, bw, bh, r[1], r[2], r[0], r[3]); y -= bh + 5; }
+  if (touch) {
+    // thumbs live at the bottom on phones: stack the bars under the credits instead
+    y = 62;
+    for (const r of rows) { bar(ctx, pad, y, bw, bh, r[1], r[2], r[0], r[3]); y += bh + 4; }
+    y += 14;
+  } else for (const r of rows) { bar(ctx, pad, y, bw, bh, r[1], r[2], r[0], r[3]); y -= bh + 5; }
   if (ship.fuel <= 0) warnText(ctx, pad, y - 6, 'OUT OF FUEL — core RCS only. [R] recall home', game.time);
   else if (ship.powerFactor < 0.5) warnText(ctx, pad, y - 6, 'BROWNOUT — systems underpowered', game.time);
   else if (ship.cargoUnits >= ship.cargoMax - 0.01 && ship.cargoMax > 0) warnText(ctx, pad, y - 6, 'CARGO FULL — dock at the outpost to sell', game.time, '#ffcf5a');
 
   // ---- damage diagram (bottom-left, right of bars)
-  drawDamageDiagram(ctx, ship, pad + bw + 14, H - pad - 110, 110, 110);
+  if (!touch) drawDamageDiagram(ctx, ship, pad + bw + 14, H - pad - 110, 110, 110);
 
   // ---- radar (top-right)
-  drawRadar(ctx, game, W - pad - 170, pad, 170);
+  const rs = touch ? Math.min(120, H * 0.28) : 170;
+  drawRadar(ctx, game, W - pad - rs - (touch ? 40 : 0), pad, rs);
 
   // ---- telemetry (bottom-right)
   if (game.settings.telemetry) {

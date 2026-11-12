@@ -212,3 +212,84 @@ body:not(.flying) .toast-wrap { top: auto; bottom: 22px; left: auto; right: 22px
 .dev-grid { display: flex; flex-wrap: wrap; gap: 6px; }
 .dev .card h3 { color: #ff3cac; }
 .title-btns .btn:nth-child(3), .title-btns .btn:last-child[title] { border-color: #ff3cac; }
+
+/* =================== touch / phone =================== */
+html, body { overscroll-behavior: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+canvas#game, .b-canvas, .tc, .tc * { touch-action: none; }
+.btn.tool { display: none; }
+body.touch .btn.tool { display: inline-block; }
+#rotate { display: none; }
+@media (orientation: portrait) and (max-width: 700px) {
+  #rotate { display: flex; position: fixed; inset: 0; z-index: 100; background: #070a16; color: var(--accent); flex-direction: column; align-items: center; justify-content: center; font-size: 18px; text-align: center; }
+  #rotate div { font-size: 64px; animation: spinHint 2s ease-in-out infinite; }
+}
+@keyframes spinHint { 0%, 30% { transform: rotate(0); } 60%, 100% { transform: rotate(90deg); } }
+
+.tc { position: fixed; inset: 0; pointer-events: none !important; z-index: 15; }
+.tc.hidden { display: none; }
+.tc > * { pointer-events: auto; }
+.tc-zone { position: absolute; left: 0; bottom: 0; width: 48%; height: 70%; }
+.tc-base { position: absolute; width: 124px; height: 124px; margin: -62px 0 0 -62px; border-radius: 50%; border: 2px solid rgba(125,249,255,0.35); background: rgba(125,249,255,0.06); display: none; pointer-events: none !important; }
+.tc-base.on { display: block; }
+.tc-knob { position: absolute; left: 37px; top: 37px; width: 50px; height: 50px; border-radius: 50%; background: rgba(125,249,255,0.35); border: 2px solid rgba(125,249,255,0.8); }
+.tc-btn { display: flex; align-items: center; justify-content: center; border-radius: 50%; font-weight: 900; color: #fff; user-select: none; -webkit-user-select: none; background: rgba(20,28,52,0.55); border: 2px solid rgba(255,255,255,0.25); }
+.tc-btn.down { transform: scale(0.92); filter: brightness(1.5); }
+.tc-right { position: absolute; right: calc(18px + env(safe-area-inset-right)); bottom: calc(18px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.tc-row { display: flex; gap: 10px; }
+.tc-fire { width: 96px; height: 96px; font-size: 16px; background: rgba(255,77,109,0.35); border-color: rgba(255,77,109,0.85); }
+.tc-crack { width: 74px; height: 74px; font-size: 12px; display: none; background: rgba(255,60,172,0.35); border-color: #ff3cac; }
+.tc-crack.show { display: flex; }
+.tc-small { width: 46px; height: 46px; font-size: 16px; }
+.tc-side { position: absolute; right: calc(10px + env(safe-area-inset-right)); top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.tc-side .tc-small { width: 40px; height: 40px; font-size: 14px; }
+.tc-assist.off { opacity: 0.4; }
+.tc-recall.down { background: rgba(125,249,255,0.4); }
+.tc-dock { position: absolute; left: 50%; bottom: calc(22px + env(safe-area-inset-bottom)); transform: translateX(-50%); width: 120px; height: 52px; border-radius: 26px; font-size: 18px; letter-spacing: 2px; display: none; background: rgba(125,249,255,0.3); border-color: #7df9ff; }
+.tc-dock.show { display: flex; animation: pop 0.3s ease-out; }
+.tc-dock.down { transform: translateX(-50%) scale(0.94); }
+body.touch .contract { top: 6px; max-width: calc(100vw - 330px); padding: 4px 6px 4px 10px; gap: 8px; font-size: 12px; }
+body.touch .contract .c-desc, body.touch .contract .dim.small { display: none; }
+body.touch .tut-flight { top: auto; bottom: 14px; left: 50%; max-width: min(420px, 46vw); font-size: 12.5px; padding: 8px 10px; }
+body.touch .devbar { left: 30%; right: 130px; bottom: 6px; }
+body.touch .devbar .btn { padding: 4px 7px; }
+
+/* small screens (phones in landscape) */
+@media (max-height: 520px), (max-width: 760px) {
+  .h-top { padding: calc(4px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right)) 4px calc(10px + env(safe-area-inset-left)); gap: 8px; flex-wrap: nowrap; }
+  .h-title .dim { display: none; }
+  .logo { font-size: 12px; letter-spacing: 0.08em; }
+  .h-tabs { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; scrollbar-width: none; }
+  .h-tab { padding: 6px 9px; font-size: 12.5px; white-space: nowrap; }
+  .money.big { font-size: 16px; min-width: 0; }
+  .launch { font-size: 13px; padding: 7px 12px; }
+  .h-body { padding: 10px calc(10px + env(safe-area-inset-right)) 10px calc(10px + env(safe-area-inset-left)); }
+  .market { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+  .card { padding: 10px 12px; }
+  .research { grid-template-columns: repeat(5, 210px); overflow-x: auto; }
+  .builder { grid-template-columns: 132px 1fr 190px; }
+  .b-palette { padding: 4px; }
+  .b-card { gap: 4px; padding: 3px; }
+  .b-icon { width: 28px; height: 28px; }
+  .b-card-name { font-size: 11px; }
+  .b-card-cost { font-size: 10.5px; }
+  .b-toolbar { padding: 4px; gap: 4px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .b-toolbar .btn { padding: 4px 7px; font-size: 11px; white-space: nowrap; flex: none; }
+  .b-sep { display: none; }
+  .b-hint { display: none; }
+  .b-stats { padding: 6px 8px; }
+  .s-row { font-size: 11px; }
+  .s-warns { font-size: 11px; }
+  .b-info { min-height: 0; padding: 6px 8px; }
+  .i-rows { grid-template-columns: 1fr; font-size: 11px; }
+  .title-logo { font-size: 44px; }
+  .title { gap: 10px; }
+  .title-help { margin-top: 8px; font-size: 12px; text-align: center; padding: 0 20px; }
+  .big-btn { padding: 9px 18px; font-size: 15px; }
+  .modal { padding: 12px 14px; max-height: 92vh; }
+  .tut-hangar { left: 10px; bottom: 10px; max-width: 340px; font-size: 12.5px; }
+  .sm-node { width: 180px; }
+}
+body.touch .tut-flight { top: 50px; bottom: auto; }
+body.touch .tut-flight { top: 48px; max-width: min(340px, 44vw); font-size: 11.5px; line-height: 1.3; padding: 6px 9px; }
+body.touch .tut-flight .tut-head { margin-bottom: 2px; }
+body.touch .tut-flight .btn.small { padding: 2px 6px; font-size: 10.5px; }

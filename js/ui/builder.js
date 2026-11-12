@@ -49,8 +49,15 @@ export class Builder {
     this.btnUndo = tb('↶ Undo', 'Ctrl+Z', () => this.undo());
     this.btnRedo = tb('↷ Redo', 'Ctrl+Y', () => this.redo());
     this.btnMirror = tb('⇋ Mirror', 'M: place symmetrically', () => this.toggleMirror());
+    this.tool = 'place';
+    this.toolBtns = {
+      place: tb('✚ Place', 'Touch: tap or drag to place', () => this.setTool('place'), 'on tool'),
+      erase: tb('✖ Erase', 'Touch: tap or drag to remove', () => this.setTool('erase'), 'tool'),
+      pan: tb('✋ Pan', 'Touch: drag to move the view (or use two fingers)', () => this.setTool('pan'), 'tool'),
+    };
     this.btnForces = tb('➚ Forces', 'Show thrust vectors and center of mass', () => { this.showForces = !this.showForces; this.btnForces.classList.toggle('on', this.showForces); }, 'on');
     const toolbar = el('div', { class: 'b-toolbar' },
+      ...Object.values(this.toolBtns),
       this.btnUndo, this.btnRedo,
       tb('⟳ Rotate', 'R or mouse wheel', () => this.rotate(1)),
       tb('−', 'Zoom out (Ctrl/⌘ + wheel)', () => this.zoom(1.25)),
@@ -78,7 +85,7 @@ export class Builder {
     this.mounted = false;
     this.ro.disconnect();
     removeEventListener('keydown', this._key);
-    removeEventListener('mouseup', this._up);
+    removeEventListener('pointerup', this._up);
     this.root.remove();
   }
 
@@ -105,8 +112,24 @@ export class Builder {
     this.resize();
     this.updateHover();
   }
-  pan(dx, dy) {
-    const lim = (this.frame - 1) / 2;
+  pinch() {
+    const [a, b] = [...this.pointers.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y);
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    if (this.pinchD) {
+      this.zoomHalf = Math.max(3, Math.min((GRID.size - 1) / 2 + 1, this.zoomHalf * (this.pinchD / d)));
+      this.resize();
+      this.pan((this.pinchM[0] - mx) / this.S, (this.pinchM[1] - my) / this.S, true);
+    }
+    this.pinchD = d; this.pinchM = [mx, my];
+  }
+  setTool(t) {
+    this.tool = t;
+    for (const [k, b] of Object.entries(this.toolBtns)) b.classList.toggle('on', k === t);
+    this.game.sfx('click');
+  }
+  pan(dx, dy, smooth = false) {
+    const lim = (this.frame - 1) / 2 + 2;
     this.panX = Math.max(-lim, Math.min(lim, this.panX + dx));
     this.panY = Math.max(-lim, Math.min(lim, this.panY + dy));
     this.updateHover();
@@ -129,7 +152,7 @@ export class Builder {
         drawPart(g, id, 32, 32, s, 0);
         const card = el('div', {
           class: 'b-card' + (unlocked ? '' : ' locked'),
-          onmousedown: (e) => { if (e.button !== 0) return; if (!unlocked) { toast(`Locked — research ${UPGRADE_BY_ID[p.unlock].name}`, 'bad'); this.game.sfx('denied'); return; } this.select(id); this.dragFromPalette = true; },
+          onpointerdown: (e) => { if (e.button !== 0) return; if (!unlocked) { toast(`Locked — research ${UPGRADE_BY_ID[p.unlock].name}`, 'bad'); this.game.sfx('denied'); return; } this.select(id); this.dragFromPalette = true; },
           onmouseenter: () => this.showInfo(id),
           onmouseleave: () => this.showInfo(null),
         }, icon, el('div', { class: 'b-card-text' }, el('div', { class: 'b-card-name' }, p.name), el('div', { class: 'b-card-cost' }, unlocked ? (p.cost ? money(p.cost) : 'free') : '🔒 ' + UPGRADE_BY_ID[p.unlock].name)));
@@ -143,6 +166,7 @@ export class Builder {
 
   select(id) {
     this.sel = id;
+    if (this.game.touch && this.info) this.showInfo(id);
     for (const k in this.cards) this.cards[k].classList.toggle('sel', k === id);
     this.game.sfx('click');
   }
@@ -175,19 +199,51 @@ export class Builder {
   // ------------------------------------------------------------- input
   bindCanvas() {
     const cv = this.canvas;
-    cv.addEventListener('mousemove', (e) => {
-      const r = cv.getBoundingClientRect();
-      this.mx = e.clientX - r.left; this.my = e.clientY - r.top;
+    // Pointer events cover mouse, pen and touch. Mouse: left place, right erase,
+    // middle pick. Touch: the active tool (Place / Erase / Pan); two fingers pinch-zoom and pan.
+    this.pointers = new Map();
+    const pos = (e) => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+    cv.addEventListener('pointermove', (e) => {
+      const [x, y] = pos(e);
+      const p = this.pointers.get(e.pointerId);
+      if (p) { p.px = p.x; p.py = p.y; p.x = x; p.y = y; }
+      if (this.pointers.size >= 2) { this.pinch(); return; }
+      this.mx = x; this.my = y;
+      if (this.panning && p) { this.pan((p.px - x) / this.S, (p.py - y) / this.S, true); return; }
       this.updateHover();
       if (this.stroke) this.paint();
     });
-    cv.addEventListener('mouseleave', () => { this.hover = null; });
-    cv.addEventListener('mousedown', (e) => {
+    cv.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') this.hover = null; });
+    cv.addEventListener('pointerdown', (e) => {
       e.preventDefault();
-      if (e.button === 1) { this.eyedrop(); return; }
-      this.stroke = { mode: e.button === 2 ? 'erase' : 'place', before: this.snapshot(), changed: false, last: null };
+      cv.setPointerCapture(e.pointerId);
+      const [x, y] = pos(e);
+      this.pointers.set(e.pointerId, { x, y, px: x, py: y });
+      if (this.pointers.size >= 2) { // second finger: cancel the stroke, start pinch
+        if (this.stroke) { if (this.stroke.changed) this.restore(this.stroke.before); this.stroke = null; }
+        this.panning = false;
+        this.pinchD = null;
+        return;
+      }
+      this.mx = x; this.my = y;
+      this.updateHover();
+      if (e.pointerType === 'mouse') {
+        if (e.button === 1) { this.eyedrop(); return; }
+        this.stroke = { mode: e.button === 2 ? 'erase' : 'place', before: this.snapshot(), changed: false, last: null };
+      } else {
+        if (this.tool === 'pan') { this.panning = true; return; }
+        this.stroke = { mode: this.tool, before: this.snapshot(), changed: false, last: null };
+      }
       this.paint();
     });
+    const lift = (e) => {
+      this.pointers.delete(e.pointerId);
+      if (this.pointers.size < 2) this.pinchD = null;
+      if (this.pointers.size === 0) this.panning = false;
+      if (e.pointerType !== 'mouse' && this.pointers.size === 0) this.hover = this.tool === 'place' ? this.hover : null;
+    };
+    cv.addEventListener('pointerup', lift);
+    cv.addEventListener('pointercancel', lift);
     cv.addEventListener('contextmenu', (e) => e.preventDefault());
     cv.addEventListener('wheel', (e) => { e.preventDefault(); if (e.ctrlKey || e.metaKey) this.zoom(e.deltaY > 0 ? 1.12 : 0.89); else this.rotate(e.deltaY > 0 ? 1 : -1); }, { passive: false });
     this._up = (e) => {
@@ -195,7 +251,7 @@ export class Builder {
       this.dragFromPalette = false;
       if (this.stroke) { if (this.stroke.changed) this.pushHistory(); this.stroke = null; }
     };
-    addEventListener('mouseup', this._up);
+    addEventListener('pointerup', this._up);
     this._key = (e) => {
       if (!this.mounted || e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
       if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') { e.preventDefault(); e.shiftKey ? this.redo() : this.undo(); }
@@ -593,7 +649,7 @@ export class Builder {
     }
     // ghost
     const h = this.hover;
-    if (h && !this.stroke?.mode?.startsWith('erase')) {
+    if (h && this.tool !== 'erase' && this.stroke?.mode !== 'erase') {
       const ghosts = [[h.ax, h.ay, this.rot]];
       if (this.mirror) { const m = this.mirrorOf(this.sel, h.ax, h.ay, this.rot); if (m[0] !== h.ax || m[2] !== this.rot) ghosts.push(m); }
       for (const [gx, gy, gr] of ghosts) {
@@ -616,7 +672,7 @@ export class Builder {
           }
         }
       }
-    } else if (h && this.stroke?.mode === 'erase') {
+    } else if (h && (this.stroke?.mode === 'erase' || this.tool === 'erase')) {
       const [px, py] = P(h.cx, h.cy);
       g.strokeStyle = '#ff5d73'; g.lineWidth = 2; g.strokeRect(px - S / 2 + 2, py - S / 2 + 2, S - 4, S - 4);
     }

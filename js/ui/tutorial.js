@@ -4,13 +4,13 @@ import { ECONOMY } from '../data.js';
 import { TAU } from '../util.js';
 
 const STEPS = [
-  { where: 'flight', title: 'Fly', text: 'Hold W to thrust, A / D to turn. Your ship is built from parts — every thruster pushes the way it points.', done: (g) => g.tut.moved > 180 },
-  { where: 'flight', title: 'Mine', text: 'Fly to a rock (marked) and hold SPACE. The laser fires from the front of your ship.', done: (g) => g.ship.cargoUnits >= 2, target: 'rock' },
+  { where: 'flight', title: 'Fly', text: 'Hold W to thrust, A / D to turn. Your ship is built from parts — every thruster pushes the way it points.', touch: 'Drag your left thumb anywhere on the left side: the ship turns toward that direction and flies there. Every thruster pushes the way it points.', done: (g) => g.tut.moved > 180 },
+  { where: 'flight', title: 'Mine', text: 'Fly to a rock (marked) and hold SPACE. The laser fires from the front of your ship.', touch: 'Fly to the marked rock, point your nose at it and hold FIRE. The laser fires from the front of your ship.', done: (g) => g.ship.cargoUnits >= 2, target: 'rock' },
   { where: 'flight', title: 'Collect', text: 'Ore chunks get pulled into your cargo pods. Grab about 15 — notice the ship gets heavier.', done: (g) => g.ship.cargoUnits >= Math.min(15, g.ship.cargoMax - 1), target: 'rock' },
-  { where: 'flight', title: 'Go home', text: 'Follow the cyan arrow to the OUTPOST and press F to dock (or hold R to recall).', done: (g) => g.state === 'hangar', target: 'station' },
+  { where: 'flight', title: 'Go home', text: 'Follow the cyan arrow to the OUTPOST and press F to dock (or hold R to recall).', touch: 'Follow the cyan arrow to the OUTPOST and tap DOCK when it appears (or hold ⟲ to recall).', done: (g) => g.state === 'hangar', target: 'station' },
   { where: 'hangar', title: 'Sell', text: 'Sell your ore here in the Market. Credits buy parts and research.', done: (g) => (g.save.stats.earned || 0) > 0 },
   { where: 'hangar', title: 'Build', text: 'Open the SHIPYARD. Add a Cargo Pod or a Mining Laser. Watch the stats: off-center thrust makes you spin.', done: (g) => (g.save.stats.partsBought || 0) > 0 || Object.keys(g.save.upgrades).length > 0 },
-  { where: 'hangar', title: 'The plan', text: 'Fighting is your choice: out in space press G to start a paid CONTRACT wave. Clear the board, beat the boss, unlock new sectors. The Market shows each wave\'s pay and difficulty. LAUNCH when ready.', done: (g) => g.state === 'flight' },
+  { where: 'hangar', title: 'The plan', touch: 'Fighting is your choice: out in space tap Start wave at the top to begin a paid CONTRACT. Clear the board, beat the boss, unlock new sectors. LAUNCH when ready.', text: 'Fighting is your choice: out in space press G to start a paid CONTRACT wave. Clear the board, beat the boss, unlock new sectors. The Market shows each wave\'s pay and difficulty. LAUNCH when ready.', done: (g) => g.state === 'flight' },
 ];
 
 export class Tutorial {
@@ -32,7 +32,7 @@ export class Tutorial {
     this.el = el('div', { class: 'tut ' + (st.where === 'flight' ? 'tut-flight' : 'tut-hangar'), 'data-step': this.t.step, 'data-where': g.state },
       el('div', { class: 'tut-head' }, el('span', { class: 'tut-step' }, `${this.t.step + 1}/${STEPS.length}`), el('b', {}, st.title),
         el('button', { class: 'btn small', onclick: () => this.skip() }, 'Skip tutorial')),
-      el('div', {}, st.text));
+      el('div', {}, (g.touch && st.touch) || st.text));
     g.ui.append(this.el);
   }
   remove() { if (this.el) { this.el.remove(); this.el = null; } }

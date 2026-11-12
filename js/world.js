@@ -9,7 +9,9 @@ import { oreFromDamage } from './economy.js';
 const C = PHYS.CELL;
 
 export class World {
-  constructor(sectorIndex, game, seed = 1234) {
+  // opts.arena: the fighter's defense post (no asteroids, no outpost)
+  constructor(sectorIndex, game, seed = 1234, opts = {}) {
+    this.arena = !!opts.arena;
     this.sector = SECTORS[sectorIndex];
     this.sectorIndex = sectorIndex;
     this.game = game;
@@ -29,7 +31,7 @@ export class World {
     this._sparkT = 0;
     this._fullMsgT = 0;
     this.ship = null;
-    this.genRocks();
+    if (!this.arena) this.genRocks();
   }
 
   // -------------------------------------------------------------- rocks
@@ -278,7 +280,7 @@ export class World {
     }
     // respawn
     this.respawnTimer -= dt;
-    if (this.rocks.length < this.sector.asteroids && this.respawnTimer <= 0) {
+    if (!this.arena && this.rocks.length < this.sector.asteroids && this.respawnTimer <= 0) {
       this.respawnTimer = ASTEROIDS.respawnDelay;
       this.spawnRock(undefined, null, Math.random() < 0.75);
     }
@@ -423,13 +425,16 @@ export class World {
   // --------------------------------------------------------------- draw
   draw(ctx, cam, time) {
     const v = cam.view(120);
-    this.drawStation(ctx, time);
+    if (this.arena) this.drawPost(ctx, time);
+    else this.drawStation(ctx, time);
     // sector edge
+    if (!this.arena) {
     ctx.strokeStyle = 'rgba(255,80,120,0.25)';
     ctx.setLineDash([30, 30]);
     ctx.lineWidth = 3 / cam.zoom;
     ctx.beginPath(); ctx.arc(0, 0, this.sector.radius, 0, TAU); ctx.stroke();
     ctx.setLineDash([]);
+    }
     // rocks
     for (const r of this.rocks) {
       if (r.x + r.r < v.x0 || r.x - r.r > v.x1 || r.y + r.r < v.y0 || r.y - r.r > v.y1) continue;
@@ -537,6 +542,17 @@ export class World {
     ctx.fillStyle = `rgba(106,168,255,${0.04 + ship.hitFlash * 0.12})`;
     ctx.fill();
     ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // the fighter's anchor: a glowing pad and range rings
+  drawPost(ctx, time) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,77,109,0.10)'; ctx.lineWidth = 2;
+    for (const r of [480, 900]) { ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.stroke(); }
+    ctx.rotate(time * 0.15);
+    ctx.strokeStyle = 'rgba(255,77,109,0.35)'; ctx.setLineDash([14, 18]); ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0, 0, 150, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
+    ctx.restore();
   }
 
   drawStation(ctx, time) {

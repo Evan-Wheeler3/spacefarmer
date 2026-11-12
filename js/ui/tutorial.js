@@ -10,7 +10,7 @@ const STEPS = [
   { where: 'flight', title: 'Go home', text: 'Follow the cyan arrow to the OUTPOST and press F to dock (or hold R to recall).', touch: 'Follow the cyan arrow to the OUTPOST and tap DOCK when it appears (or hold ⟲ to recall).', done: (g) => g.state === 'hangar', target: 'station' },
   { where: 'hangar', title: 'Sell', text: 'Sell your ore here in the Market. Credits buy parts and research.', done: (g) => (g.save.stats.earned || 0) > 0 },
   { where: 'hangar', title: 'Build', text: 'Open the SHIPYARD. Add a Cargo Pod or a Mining Laser. Watch the stats: off-center thrust makes you spin.', done: (g) => (g.save.stats.partsBought || 0) > 0 || Object.keys(g.save.upgrades).length > 0 },
-  { where: 'hangar', title: 'The plan', touch: 'Fighting is your choice: out in space tap Start wave at the top to begin a paid CONTRACT. Clear the board, beat the boss, unlock new sectors. LAUNCH when ready.', text: 'Fighting is your choice: out in space press G to start a paid CONTRACT wave. Clear the board, beat the boss, unlock new sectors. The Market shows each wave\'s pay and difficulty. LAUNCH when ready.', done: (g) => g.state === 'flight' },
+  { where: 'hangar', title: 'Your fighter', touch: 'Your FIGHTER is a defense platform that works paid combat contracts on its own while you mine — see the ⚔ Fighter tab, or tap its status chip in flight to watch. Upgrade both ships with your earnings. LAUNCH when ready.', text: 'Your FIGHTER is a defense platform that works paid combat contracts on its own while you mine — see the ⚔ Fighter tab, or press V in flight to watch it. Upgrade both ships with your earnings. LAUNCH when ready.', done: (g) => g.state === 'flight' },
 ];
 
 export class Tutorial {

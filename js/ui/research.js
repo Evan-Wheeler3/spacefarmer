@@ -1,6 +1,6 @@
 // Research tree, Star Map, and the "Road to Doomsday" progress tracker.
 import { UPGRADES, SECTORS, BOSSES, PARTS, ORES, PLANETS } from '../data.js';
-import { UPGRADE_BY_ID, canBuyUpgrade, sectorUnlocked, droneIncomePerMinute, frameSize, planetReward } from '../economy.js';
+import { UPGRADE_BY_ID, canBuyUpgrade, sectorUnlocked, frameSize, planetReward } from '../economy.js';
 import { contractWave, contractPay, nextContract, rate, bossThreat } from '../contracts.js';
 import { ENEMIES } from '../data.js';
 import { analyze } from '../shipdesign.js';
@@ -27,7 +27,7 @@ export function renderResearch(game, c) {
       const state = maxed ? 'maxed' : chk.ok ? 'ready' : chk.reason === 'Not enough credits' ? 'poor' : 'locked';
       const pips = max > 1 ? el('div', { class: 'r-pips' }, Array.from({ length: max }, (_, i) => el('i', { class: i < lv ? 'on' : '' }))) : '';
       const card = el('div', { class: `r-node ${state}`, style: { '--bc': BRANCH_COLORS[b] } },
-        el('div', { class: 'r-name' }, u.name, maxed && max === 1 ? ' ✓' : ''),
+        el('div', { class: 'r-name' }, u.name, maxed && max === 1 ? ' ✓' : '', el('span', { class: 'r-role ' + (u.role || 'both') }, u.role === 'fighter' ? 'FIGHTER' : u.role === 'freighter' ? 'FREIGHTER' : 'BOTH')),
         el('div', { class: 'r-desc' }, u.desc),
         pips,
         maxed ? el('div', { class: 'r-cost good' }, max > 1 ? 'MAXED' : 'OWNED')
@@ -48,6 +48,7 @@ function buy(game, u, btn) {
   if (!chk.ok) { game.sfx('denied'); return; }
   s.credits -= chk.cost;
   s.upgrades[u.id] = (s.upgrades[u.id] || 0) + 1;
+  game.fighter && game.fighter.clearFails();
   game.sfx('upgrade');
   game.hangar.updateCredits();
   const unlockedPart = Object.entries(PARTS).find(([, p]) => p.unlock === u.id);
@@ -105,18 +106,18 @@ export function roadToDoomsday(save) {
   const steps = [
     { text: 'Mine ore and sell it at the Market', done: save.stats.earned > 0 },
     { text: 'Buy a part or research an upgrade', done: Object.keys(save.upgrades).length > 0 || (save.stats.partsBought || 0) > 0 },
-    { text: `Complete combat contracts in The Shallows (fly out, press G)`, done: !!save.bossKills.grudge || (save.contracts?.shallows?.k || 0) > 0 },
-    { text: `Challenge and defeat ${BOSSES.grudge.name} (after the last contract)`, done: !!save.bossKills.grudge },
+    { text: `Let your fighter clear contracts in The Shallows (Fighter tab)`, done: !!save.bossKills.grudge || (save.contracts?.shallows?.k || 0) > 0 },
+    { text: `Fighter defeats ${BOSSES.grudge.name} (after the last contract)`, done: !!save.bossKills.grudge },
     { text: 'Research the Rust Belt License', done: has('licRust') },
-    { text: `Defeat ${BOSSES.auditor.name} in the Rust Belt`, done: !!save.bossKills.auditor },
+    { text: `Fighter defeats ${BOSSES.auditor.name} in the Rust Belt`, done: !!save.bossKills.auditor },
     { text: 'Research the Glass Reach License', done: has('licGlass') },
-    { text: `Defeat ${BOSSES.matriarch.name} in the Glass Reach`, done: !!save.bossKills.matriarch },
+    { text: `Fighter defeats ${BOSSES.matriarch.name} in the Glass Reach`, done: !!save.bossKills.matriarch },
     { text: 'Research the Deep Pale License', done: has('licPale') },
     { text: 'Research Fusion Licensing and Planet Cracker Schematics', done: has('cracker') },
-    { text: `Defeat ${BOSSES.mildred.name} in the Deep Pale`, done: !!save.bossKills.mildred },
+    { text: `Fighter defeats ${BOSSES.mildred.name} in the Deep Pale`, done: !!save.bossKills.mildred },
     { text: 'Research Gorvox Clearance', done: has('licGorvox') },
-    { text: 'Install a Planet Cracker (3×3, needs an 11×11 frame and serious power)', done: design.entries.some((e) => e.part === 'cracker') || save.planetsDestroyed > 0 },
-    { text: 'Jump to Gorvox, aim at the planet and hold [C]', done: save.planetsDestroyed > 0 },
+    { text: 'Install a Planet Cracker on your fighter (3×3, needs a big frame and serious power)', done: Design.fromJSON(save.fighter.design).entries.some((e) => e.part === 'cracker') || save.planetsDestroyed > 0 },
+    { text: 'Post the fighter in Gorvox, watch it, aim at the planet and hold [C]', done: save.planetsDestroyed > 0 },
   ];
   return steps;
 }
@@ -126,7 +127,6 @@ export function goalCard(game) {
   const steps = roadToDoomsday(s);
   const next = steps.findIndex((x) => !x.done);
   const list = el('ol', { class: 'road' }, steps.map((st, i) => el('li', { class: st.done ? 'done' : i === next ? 'next' : '' }, st.text)));
-  const drones = droneIncomePerMinute(s.upgrades);
   // what to save for: cheapest thing currently purchasable that isn't owned
   const options = UPGRADES.map((u) => ({ u, chk: canBuyUpgrade(u.id, s) })).filter((o) => o.chk.cost > 0 && (o.chk.ok || o.chk.reason === 'Not enough credits'));
   options.sort((a, b) => a.chk.cost - b.chk.cost);
@@ -136,15 +136,14 @@ export function goalCard(game) {
     next < 0 ? el('p', {}, `The next planet pays `, el('span', { class: 'money' }, money(planetReward(s.planetsDestroyed, s.upgrades))), '. Gorvox has more where that came from.') : list,
     target ? el('div', { class: 'saving' }, el('span', { class: 'dim' }, target.chk.ok ? 'Ready to research: ' : 'Saving for: '), target.u.name, ' ',
       el('div', { class: 's-bar' }, el('i', { style: { width: Math.min(100, (s.credits / target.chk.cost) * 100) + '%', background: '#ffd60a' } })),
-      el('span', { class: 'money' }, `${money(s.credits)} / ${money(target.chk.cost)}`)) : '',
-    drones ? el('p', { class: 'dim small' }, `Drones: +${money(drones)}/min, even offline (up to 4h).`) : '');
+      el('span', { class: 'money' }, `${money(s.credits)} / ${money(target.chk.cost)}`)) : '');
 }
 
 // Contract board for the current sector: every wave, its pay and how your ship stacks up.
-export function contractCard(game) {
-  const s = game.save, si = s.sector, sec = SECTORS[si];
+export function contractCard(game, si = game.save.fighter.sector) {
+  const s = game.save, sec = SECTORS[si];
   const bd = (s.contracts && s.contracts[sec.id]) || { k: 0, cleared: 0 };
-  const a = analyze(Design.fromJSON(s.design), s.upgrades);
+  const a = analyze(Design.fromJSON(s.fighter.design), s.upgrades, { role: 'fighter' });
   const rows = [];
   for (let k = 0; k < sec.contracts; k++) {
     const w = contractWave(si, k);
@@ -163,6 +162,6 @@ export function contractCard(game) {
   }
   return el('div', { class: 'card' },
     el('h3', {}, `Contracts · ${sec.name}`),
-    el('p', { class: 'dim small' }, `You choose when to fight: fly out of the safe zone and press G (or the Start button at the top of the screen). Docking abandons a contract; your place on the board is kept.${bd.cleared ? ` Board cleared ${bd.cleared}× — repeat runs pay ${Math.round(100 * 0.6)}%.` : ''}`),
+    el('p', { class: 'dim small' }, `Your fighter works down this board on its own; "For you" rates each wave against its current design. If it keeps retreating from a wave it patrols the last cleared one (at 60% pay) until you upgrade it.${bd.cleared ? ` Board cleared ${bd.cleared}× — repeat runs pay 60%.` : ''}`),
     el('table', { class: 'tbl' }, el('tr', {}, el('th', {}, '#'), el('th', {}, 'Hostiles'), el('th', {}, 'Pays'), el('th', {}, 'For you')), rows));
 }

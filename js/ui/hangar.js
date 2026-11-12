@@ -3,7 +3,7 @@ import { ORES, PARTS, SECTORS, ECONOMY, FLAVOR } from '../data.js';
 import { el, toast, popEl } from './dom.js';
 import { money, fmt, fmtTime, pick } from '../util.js';
 import { Builder, refundValue } from './builder.js';
-import { sellValue, upgradeEffects, droneIncomePerMinute } from '../economy.js';
+import { sellValue, upgradeEffects } from '../economy.js';
 import { Design, analyze } from '../shipdesign.js';
 
 export class Hangar {
@@ -123,9 +123,8 @@ export class Hangar {
         el('div', {}, el('span', { class: 'dim' }, 'Kills'), el('span', {}, lt.kills)),
         el('div', {}, el('span', { class: 'dim' }, 'Bounties'), el('span', { class: 'money' }, money(lt.bounty))),
         el('div', {}, el('span', { class: 'dim' }, 'Refuel'), el('span', {}, money(lt.refuel))))
-        : el('p', { class: 'dim' }, pick(FLAVOR.docks)),
-      droneIncomePerMinute(s.upgrades) ? el('p', {}, 'Drone Bay income: ', el('span', { class: 'money' }, money(droneIncomePerMinute(s.upgrades)) + '/min')) : '');
-    c.append(el('div', { class: 'market' }, el('div', { class: 'col' }, sellCard, this.game.contractCard()), el('div', { class: 'col' }, repairCard, tripCard), this.game.goalCard()));
+        : el('p', { class: 'dim' }, pick(FLAVOR.docks)));
+    c.append(el('div', { class: 'market' }, sellCard, el('div', { class: 'col' }, repairCard, tripCard), this.game.goalCard()));
   }
 
   sellAll(btn) {
@@ -163,8 +162,8 @@ export class Hangar {
           el('button', { class: 'btn small', onclick: () => { s.tutorial = { step: 0, done: false }; this.game.persist(); toast('Tutorial will replay on next launch', 'good'); } }, 'Replay tutorial'),
           el('button', { class: 'btn small danger', onclick: () => { if (confirm('Erase all progress? This cannot be undone.')) this.game.wipe(); } }, 'Erase save'))),
       el('div', { class: 'card' }, el('h3', {}, 'Controls'), el('div', { class: 'kv controls' },
-        ...[['W / S', 'Thrust forward / reverse'], ['A / D', 'Rotate'], ['Q / E', 'Strafe'], ['X (hold)', 'Brake'], ['Space', 'Fire mining lasers & railguns'], ['F', 'Dock (near outpost)'],
-          ['G', 'Start next combat contract'], ['R (hold)', 'Recall to outpost'], ['C (hold)', 'Charge Planet Cracker'], ['T', 'Toggle flight assist'], ['Wheel', 'Zoom'], ['Esc', 'Pause'], ['Gamepad', 'Sticks fly, RT/A fire, LT brake, LB/RB strafe, X contract, Y crack, B dock']]
+        ...[['W / S', 'Thrust forward / reverse'], ['A / D', 'Rotate'], ['Q / E', 'Strafe'], ['Space', 'Fire mining lasers & railguns'], ['F', 'Dock (near outpost)'],
+          ['X (hold)', 'Brake'], ['V', 'Watch your fighter'], ['R (hold)', 'Recall to outpost'], ['C (hold)', 'Charge Planet Cracker'], ['T', 'Toggle flight assist'], ['Wheel', 'Zoom'], ['Esc', 'Pause'], ['Gamepad', 'Sticks fly, RT/A fire, LT brake, LB/RB strafe, X contract, Y crack, B dock']]
           .map(([k, v]) => el('div', {}, el('span', { class: 'key' }, k), el('span', {}, v)))))));
   }
 }

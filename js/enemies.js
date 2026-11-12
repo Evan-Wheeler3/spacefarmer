@@ -1,11 +1,10 @@
 // Enemy waves, AI behaviours, bosses, hazards (mines, missiles, beams).
 import { ENEMIES, BOSSES, PHYS, ECONOMY, ORES, FLAVOR, CONTRACTS, SECTORS } from './data.js';
-import { contractWave, nextContract, rate } from './contracts.js';
+import { contractWave, contractPay, nextContract, rate } from './contracts.js';
 import { analyze, Design } from './shipdesign.js';
 import { TAU, rand, clamp, angleDiff, pick, segDist2, weightedPick, hexA, money, fmt } from './util.js';
 import { P_GLOW, P_SPARK, P_SMOKE, P_DEBRIS } from './particles.js';
 import { toast, el } from './ui/dom.js';
-import { Input } from './input.js';
 
 const C = PHYS.CELL;
 const MISSILE = { name: 'Complaint Missile', ai: 'missile', hp: 8, radius: 6, color: '#ff8fab', bounty: 0 };
@@ -67,7 +66,6 @@ export class EnemySystem {
     this.banner = null;
     this.boss = null;
     this.contract = null;   // the active contract, if any
-    this.ambientT = CONTRACTS.ambientFirst;
     this.zaps = [];
     this.beams = [];
     this.mines = [];
@@ -79,54 +77,17 @@ export class EnemySystem {
 
   onLaunch() {
     this.world.enemies.length = 0;
-    this.mines.length = 0; this.beams.length = 0; this.zaps.length = 0;
+    this.mines.length = 0; this.beams.length = 0;
     this.boss = null;
     this.contract = null;
-    this.ambientT = CONTRACTS.ambientFirst;
-    this.rating = null;
   }
-  onHangar() { this.panelUpdate(); }
-  onDock(died) {
-    if (this.contract) this.failContract(died ? 'Contract failed. The wave will be waiting when you return.' : 'Contract abandoned. You can retry it any time.');
+  // the fighter left the post (retreat or recall): the contract is not lost, just not finished
+  onDock() {
+    if (this.contract) this.failContract();
     this.world.enemies.length = 0;
     this.mines.length = 0; this.beams.length = 0;
     this.boss = null;
     this.banner = null;
-  }
-
-  // ------------------------------------------------------ contract panel
-  panelUpdate() {
-    const g = this.game;
-    const show = g.state === 'flight' && g.ship && !g.ship.dead && !this.boss;
-    if (!show) { if (this.panel) { this.panel.remove(); this.panel = null; this.panelKey = ''; } return; }
-    const ship = g.ship, st = this.world.station;
-    const inSafe = Math.hypot(ship.x - st.x, ship.y - st.y) < ECONOMY.stationSafeRadius;
-    const c = this.contract;
-    const left = c ? this.world.enemies.filter((e) => e.contract && !e.dead).length : 0;
-    if (!c && (!this.rating || this.rating.n.k !== this.next()?.k)) this.rating = this.rateNext();
-    const key = c ? `active|${left}` : `idle|${inSafe}|${this.rating ? this.rating.n.k + '|' + this.rating.n.kind : 'none'}`;
-    if (key === this.panelKey && this.panel) return;
-    this.panelKey = key;
-    if (!this.panel) { this.panel = el('div', { class: 'contract' }); g.ui.append(this.panel); }
-    const p = this.panel;
-    p.innerHTML = '';
-    if (c) {
-      p.append(el('span', { class: 'c-title' }, `CONTRACT ${c.k + 1}/${c.total}`), el('span', {}, `${left} hostile${left === 1 ? '' : 's'} left`),
-        el('span', { class: 'money' }, money(c.pay)), el('span', { class: 'dim small' }, 'Dock or recall = abandon (retry any time)'));
-      return;
-    }
-    const rt = this.rating;
-    if (!rt) { p.append(el('span', { class: 'dim' }, 'No contracts in this sector. Mine in peace.')); return; }
-    const n = rt.n;
-    const label = n.kind === 'boss' ? `BOSS · ${BOSSES[n.boss].name}` : `CONTRACT ${n.k + 1}/${n.total}`;
-    const desc = n.kind === 'boss' ? BOSSES[n.boss].title : Object.entries(n.wave.counts).map(([t, k]) => `${k}× ${ENEMIES[t].name}`).join(', ');
-    p.append(
-      el('span', { class: 'c-title' + (n.kind === 'boss' ? ' boss' : '') }, label),
-      el('span', { class: 'c-desc' }, desc),
-      el('span', { class: 'money' }, money(n.pay)),
-      el('span', { class: 'c-rate', style: { color: rt.r.color, borderColor: rt.r.color } }, rt.r.label),
-      el('button', { class: 'btn small ' + (n.kind === 'boss' ? 'danger' : 'primary'), disabled: inSafe, title: inSafe ? 'Leave the outpost safe zone first' : '',
-        onclick: (e) => { e.currentTarget.blur(); this.startContract(); } }, inSafe ? 'Leave safe zone' : (n.kind === 'boss' ? 'Challenge [G]' : 'Start wave [G]')));
   }
 
   // --------------------------------------------------------- contracts
@@ -145,26 +106,18 @@ export class EnemySystem {
     return { n, r: rate(a, n.kind === 'wave' ? n.wave : n.foe) };
   }
 
-  canStart() {
-    const g = this.game, ship = g.ship;
-    if (!ship || ship.dead || g.state !== 'flight') return 'Not flying';
-    if (this.contract) return 'Contract in progress';
-    if (!this.next()) return 'No contracts left here';
-    const st = this.world.station;
-    if (Math.hypot(ship.x - st.x, ship.y - st.y) < ECONOMY.stationSafeRadius) return 'Leave the outpost safe zone first';
-    return '';
-  }
-
-  startContract() {
-    const why = this.canStart();
-    if (why) { toast(why, 'bad'); this.game.sfx('denied'); return false; }
-    const n = this.next();
-    // send the ambient riff-raff home so the contract is a clean fight
-    for (const e of this.world.enemies) if (!e.contract && e.type !== 'missile') { e.state = 'flee'; e.stateT = 3; }
+  // farm: replay an already-cleared wave at repeat pay without moving the board
+  startContract(farmK = null) {
+    if (this.contract) return false;
+    let n = this.next();
+    if (farmK != null) {
+      const si = this.game.world.sectorIndex;
+      n = { kind: 'wave', k: farmK, total: this.sector.contracts, wave: contractWave(si, farmK), pay: contractPay(si, farmK, true), farm: true };
+    }
+    if (!n) return false;
     this.contract = { ...n, sectorIndex: this.game.world.sectorIndex };
     if (n.kind === 'boss') this.spawnBoss();
-    else this.spawnGroup(n.wave.counts, true, `CONTRACT ${n.k + 1}/${n.total}`);
-    this.game.persist();
+    else this.spawnGroup(n.wave.counts, true, n.farm ? `PATROL · WAVE ${n.k + 1}` : `CONTRACT ${n.k + 1}/${n.total}`);
     return true;
   }
 
@@ -176,15 +129,18 @@ export class EnemySystem {
     const sec = this.sector;
     let pay = c.pay;
     if (c.kind === 'wave') {
-      bd.k++;
-      if (bd.k >= sec.contracts && !sec.boss) { bd.k = 0; bd.cleared++; }
+      if (!c.farm) {
+        bd.k++;
+        if (bd.k >= sec.contracts && !sec.boss) { bd.k = 0; bd.cleared++; }
+      }
       this.save.credits += pay;
       this.save.stats.earned += pay;
       this.game.trip.bounty += pay;
       this.save.stats.contracts = (this.save.stats.contracts || 0) + 1;
       const n = this.next();
-      const what = !n ? '' : n.kind === 'boss' ? ` · ${BOSSES[n.boss].name} is now ready to be challenged` : ` · next: contract ${n.k + 1}`;
-      this.banner = { title: 'CONTRACT COMPLETE', text: `+${money(pay)}${what}`, t: 4, col: '#2ee6a6' };
+      const what = c.farm ? ' (patrol)' : !n ? '' : n.kind === 'boss' ? ` · ${BOSSES[n.boss].name} is next` : ` · next: contract ${n.k + 1}`;
+      this.game.onContractDone && this.game.onContractDone(c, pay);
+      this.banner = { title: c.farm ? 'PATROL COMPLETE' : 'CONTRACT COMPLETE', text: `+${money(pay)}${what}`, t: 4, col: '#2ee6a6' };
       this.world.floaters.add(this.game.ship.x, this.game.ship.y - 60, '+' + money(pay), '#ffd60a', 26, -40, 2);
       this.game.sfx('sell');
       this.game.shake(4);
@@ -195,11 +151,10 @@ export class EnemySystem {
     this.game.persist();
   }
 
-  failContract(msg) {
+  failContract() {
     if (!this.contract) return;
     this.contract = null;
     for (const e of this.world.enemies) if (e.contract) e.dead = true;
-    toast(msg, 'bad', 3000);
   }
 
   // ----------------------------------------------------------- spawning
@@ -227,23 +182,6 @@ export class EnemySystem {
     const desc = Object.entries(counts).map(([t, n]) => `${n}× ${ENEMIES[t].name}`).join(', ');
     this.banner = { title, text: desc, t: 3.5, col: contract ? '#ff5d73' : '#ff9f8a', small: !contract };
     this.game.sfx('warning');
-  }
-
-  spawnAmbient() {
-    const pool = this.sector.enemies.filter((t) => ENEMIES[t].cost <= CONTRACTS.ambientBudget);
-    const cheapest = pool.length ? pool : [this.sector.enemies.slice().sort((x, y) => ENEMIES[x].cost - ENEMIES[y].cost)[0]];
-    let budget = CONTRACTS.ambientBudget;
-    const counts = {};
-    while (budget > 0.5) {
-      const ok = cheapest.filter((t) => ENEMIES[t].cost <= budget + 0.01);
-      if (!ok.length) break;
-      const t = pick(ok);
-      counts[t] = (counts[t] || 0) + 1;
-      budget -= ENEMIES[t].cost;
-    }
-    if (!Object.keys(counts).length) counts[cheapest[0]] = 1;
-    this.spawnGroup(counts, false, '');
-    this.banner.text = 'Pirates nearby: ' + this.banner.text;
   }
 
   spawnBoss(id = this.sector.boss) {
@@ -295,7 +233,10 @@ export class EnemySystem {
     // salvage
     if (Math.random() < ECONOMY.waveDropChance || e.boss) {
       const n = e.boss ? 30 : 1 + Math.floor(e.radius / 12);
-      for (let i = 0; i < n; i++) w.spawnPickup(e.x, e.y, weightedPick(this.sector.ores), rand(60, 220));
+      // no freighter at the post to scoop it up: salvage crews sell it for you
+      let v = 0;
+      for (let i = 0; i < n; i++) v += ORES[weightedPick(this.sector.ores)].value;
+      this.game.save.credits += v; this.game.save.stats.earned += v; this.game.trip.bounty += v;
     }
     if (e.boss) this.bossDefeated(e);
   }
@@ -320,18 +261,8 @@ export class EnemySystem {
   // ------------------------------------------------------------- update
   update(dt) {
     const g = this.game, ship = g.ship, w = this.world;
-    this.panelT = (this.panelT || 0) - dt;
-    if (this.panelT <= 0) { this.panelT = 0.2; this.panelUpdate(); }
     if (!ship || g.state !== 'flight') return;
     if (this.banner) { this.banner.t -= dt; if (this.banner.t <= 0) this.banner = null; }
-    const st = w.station;
-    const inSafe = Math.hypot(ship.x - st.x, ship.y - st.y) < ECONOMY.stationSafeRadius;
-    // light ambient pirates while mining
-    if (!ship.dead && !inSafe && !this.contract && !this.save.dev?.peaceful) {
-      this.ambientT -= dt;
-      if (this.ambientT <= 0) { this.ambientT = rand(...CONTRACTS.ambientEvery); if (!w.enemies.some((e) => !e.dead && e.type !== 'missile')) this.spawnAmbient(); }
-    }
-    if (!ship.dead && (Input.hit('KeyG') || Input.padPressed.has(2))) this.startContract();
     for (const e of w.enemies) {
       if (e.dead) continue;
       e.t += dt;
@@ -348,11 +279,6 @@ export class EnemySystem {
       });
       // body contact with the ship
       if (!ship.dead) this.contact(e, ship, dt);
-      // the outpost defends its customers
-      if (Math.hypot(e.x - st.x, e.y - st.y) < ECONOMY.stationSafeRadius && !e.contract) {
-        e.zapT = (e.zapT || 0) - dt;
-        if (e.zapT <= 0) { e.zapT = 0.45; this.zaps.push({ x: e.x, y: e.y, t: 0.15 }); this.damage(e, 35, e.x, e.y, true); g.sfx('zap'); }
-      }
       // leash: despawn stragglers far away
       if (Math.hypot(e.x - ship.x, e.y - ship.y) > 3200 && !e.contract) e.dead = true;
     }
@@ -393,7 +319,6 @@ export class EnemySystem {
         }
       }
     }
-    for (let i = this.zaps.length - 1; i >= 0; i--) { this.zaps[i].t -= dt; if (this.zaps[i].t <= 0) this.zaps.splice(i, 1); }
   }
 
   steer(e, tx, ty, speed, dt) {
@@ -723,13 +648,6 @@ export class EnemySystem {
         ctx.fillStyle = e.def.color; ctx.fillRect(e.x - W / 2, e.y - e.radius - 10, W * Math.max(0, e.hp / e.maxHp), 4);
       }
     }
-    // outpost zaps
-    ctx.globalCompositeOperation = 'lighter';
-    for (const z of this.zaps) {
-      ctx.strokeStyle = `rgba(125,249,255,${z.t * 6})`; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.moveTo(w.station.x, w.station.y); ctx.lineTo(z.x + rand(-6, 6), z.y + rand(-6, 6)); ctx.stroke();
-    }
-    ctx.globalCompositeOperation = 'source-over';
   }
 
   hud(ctx, W, H) {

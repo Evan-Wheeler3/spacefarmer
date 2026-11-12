@@ -2,8 +2,10 @@
 
 *Mine rocks. Bolt on guns. Eventually, delete a planet.*
 
-A browser game about building a modular spaceship, flying it with real 2D rigid-body physics, mining
-asteroids, fending off pirates, and working your way up to a weapon that destroys planets.
+A browser game with two ships. You fly a modular **freighter** with real 2D rigid-body physics to
+explore and mine asteroids, while your **fighter**, a stationary defense platform, works combat
+contracts on its own, tower-defense style. Upgrade both, and eventually build a weapon that destroys
+planets.
 HTML5 canvas + vanilla ES modules. No build step, no dependencies, no external assets: all art is
 drawn procedurally and all audio is synthesized with WebAudio.
 
@@ -30,19 +32,27 @@ drawn procedurally and all audio is synthesized with WebAudio.
   behind them to vent. Lasers, railguns and the Planet Cracker need a clear cell in front.
 - **Death** loses your cargo; insurance rebuilds the Command Core for free and everything else stays
   in the condition it was in (repair at the Market).
-- **You choose when to fight.** Each sector has a board of paid **combat contracts** (6 waves, 8 in
-  Gorvox). Fly out of the outpost safe zone and press **G** (or click *Start wave* at the top of the
-  screen). Each wave pays a fee that grows by ×1.3 per wave, plus bounties, and is rated
-  *Easy / Fair / Hard / Deadly* for your current ship. After the last wave you can challenge the sector
-  boss. Docking, recalling or dying abandons the contract, but your place on the board is kept.
-  Cleared boards can be re-run at 60% pay.
-- **Mining is mostly peaceful:** at most 1–2 weak pirates drop by every couple of minutes, and none
-  appear inside the safe zone.
+- **Two ships, running at the same time.** The **freighter** has no weapons; it explores, mines and
+  hauls, and its space is peaceful. The **fighter** is a stationary platform at a defense post in a
+  sector you choose. It works that sector's board of paid **combat contracts** (6 waves then the boss;
+  8 waves in Gorvox) on its own while you mine, the hangar is open, or the game is closed.
+- **Watch any time:** the status chip at the top of the freighter screen (or **V**, or the ⚔ Fighter
+  tab) shows the fighter's fight. **Take control** to aim and fire yourself, then hand it back. While
+  you watch, the freighter waits.
+- **The fighter retreats instead of dying.** Below a hull threshold you set (default 30%) it jumps
+  out, pays for repairs at 40% of the normal price, and redeploys 15 s later. **The contract isn't
+  lost.** If it retreats from the same contract twice, it patrols the last cleared wave at 60% pay until
+  you upgrade it. AFK bosses are allowed and pay big.
+- **Upgrades apply where they make sense.** Research is tagged *Freighter*, *Fighter* or *Both*
+  (cargo and mining for the freighter; weapons, shields and Fortification for the fighter). Each ship
+  has its own parts and design. Existing saves had their freighter guns sold back automatically.
+- **Offline:** while the game is closed, the fighter's contracts are resolved with the same ratings the
+  board shows, paid at 50% and capped at 4 h.
 - **Sectors** are separate jump destinations, each with its own outpost; harder rocks hold richer ore.
 - **Autosave** to `localStorage` every 15 s, on dock, on purchase, and when the tab is hidden.
-  **Drone Bay** income keeps accruing while you're away (capped at 4 h).
-- **Target pacing** (economy bot, optimal play, fights only Easy/Fair contracts): first boss ≈5 min,
-  planet destroyed ≈1h10m. Expect 1.5–2.5 h for a human.
+- **Target pacing** (economy bot, optimal play): first boss ≈14 min, a new sector every 10–15 min,
+  planet destroyed ≈1h10m, with income split about 55% mining / 45% fighter. Expect 1.5–2.5 h for a
+  human.
 - Desktop first. Gamepad is supported in flight (standard mapping). The builder is mouse-driven.
 
 ## Controls
@@ -53,7 +63,7 @@ drawn procedurally and all audio is synthesized with WebAudio.
 | A / D | rotate | Right click / drag | remove part |
 | Q / E | strafe | R or mouse wheel | rotate part |
 | X (hold) | brake: all thrusters against your drift, kills spin | | |
-| G | start the next combat contract | | |
+| V | watch your fighter (and back) | | |
 | Space | fire mining lasers and railguns (turrets aim and fire themselves) | M | mirror mode |
 | F | dock (near the outpost, moving slowly) | Middle click | pick up a placed part's type |
 | R (hold) | recall to the outpost | Ctrl+Z / Ctrl+Y | undo / redo |
@@ -66,7 +76,10 @@ drawn procedurally and all audio is synthesized with WebAudio.
 | F3 | physics telemetry | | |
 | Esc | pause | | |
 
-**Gamepad:** left stick thrust, right stick turn, RT or A fire, LT brake, LB/RB strafe, X start contract, Y charge the cracker, B dock.
+**Gamepad:** left stick thrust, right stick turn, RT or A fire, LT brake, LB/RB strafe, Y charge the cracker, B dock.
+
+**Watching the fighter:** Take control, then A/D turn the platform (to aim railguns or the Cracker),
+Space fires, and hold C to charge the Cracker (it swings toward the planet for you).
 
 ## The loop
 
@@ -76,9 +89,11 @@ drawn procedurally and all audio is synthesized with WebAudio.
 3. **Build** in the Shipyard. Live stats show mass, thrust-to-weight, 90° turn time, off-center torque
    vs gyro authority, power balance, fuel endurance, mining rate and DPS, with diagnostics that warn
    about blocked exhausts, detached parts, power deficits, and ships that *will* spin.
-4. **Research** better prices, mining, health, weapons, part unlocks, bigger frames, and jump licenses.
-5. **Take combat contracts (G) when your ship is ready, beat the boss**, and unlock the next sector.
-6. **Build a Planet Cracker**, jump to Gorvox, aim at the planet and hold **C**.
+4. **Build your fighter** in the Shipyard (switch to ⚔ Fighter): turrets, armor, shields, power, and
+   gyros to swing railguns. It earns contract fees and bounties around the clock.
+5. **Research** better prices, mining, health, weapons, part unlocks, bigger frames, and jump licenses.
+   Each sector unlocks when your fighter beats the previous sector's boss.
+6. **Put a Planet Cracker on the fighter**, post it in Gorvox, watch, aim at the planet and hold **C**.
 
 The **Road to Doomsday** card in the Market always shows the next step.
 
@@ -106,8 +121,8 @@ folder on any static host (GitHub Pages, Netlify, Vercel); no build step is need
 | DOCK | appears near the outpost |
 | ⟲ (hold) | recall to the outpost |
 | ❚❚ / A | pause / flight assist on-off |
-| CRACK (hold) | appears when your ship has a Planet Cracker |
-| Start wave (top of screen) | begin the next contract |
+| Fighter chip (top of screen) | watch your fighter; *Take control* lets the stick turn it and FIRE fire |
+| CRACK (hold) | appears while controlling a fighter that has a Planet Cracker |
 
 **Shipyard:** pick a tool (✚ Place, ✖ Erase or ✋ Pan) and tap or drag on the grid. Use two fingers to
 pinch-zoom and pan. Tapping a part in the palette selects it and shows its stats.
@@ -118,28 +133,29 @@ pinch-zoom and pan. Tapping a part in the palette selects it and shows its stats
 touches your real progress. It starts with every research maxed (including a 31×31 frame), every boss
 beaten and ¢1B. The hangar gets a **⚙ Dev** tab with:
 
-- cheats: infinite credits, god mode, infinite fuel or power, and peaceful (no ambient pirates)
+- cheats: infinite credits, god mode, infinite fuel or power
 - set credits, and raise or lower any research level (Max all / Reset all)
 - toggle boss kills, set each sector's contract board position and planets destroyed
 - jump to any sector, and reset the sandbox
 
-In flight, a **dev bar** along the bottom spawns any enemy (+1/+5) or any boss, kills everything, toggles
-god mode, repairs the ship, sets game speed (×0.25 to ×4) and teleports you next to the planet in Gorvox.
+While watching the fighter, a **dev bar** along the bottom spawns any enemy (+1/+5) or any boss, kills
+everything, toggles god mode, repairs the platform, skips to the next wave and sets game speed (×0.25 to ×4).
 **Save & quit to title** returns you to your real save.
 
 ## Content at a glance
 
-- **17 parts:** Command Core, Hull Plate, Armor Block, Thruster, Torch Drive (1×2), Gyroscope, Reactor,
-  Fusion Reactor (2×2), Battery, Fuel Tank, Cargo Pod, Tractor Coil, Mining Laser, Autocannon, Railgun
-  (1×2, real recoil), Shield Emitter, Planet Cracker (3×3). Reactors explode when destroyed, and parts
-  cut off from the core detach.
+- **17 parts**, each tagged freighter, fighter or both. Freighter: Thruster, Torch Drive (1×2), Fuel
+  Tank, Cargo Pod, Tractor Coil, Mining Laser. Fighter: Autocannon, Railgun (1×2, real recoil), Shield
+  Emitter, Planet Cracker (3×3). Both: Command Core, Hull Plate, Armor Block, Gyroscope, Reactor,
+  Fusion Reactor (2×2), Battery. Reactors explode when destroyed, and parts cut off from the core detach.
 - **6 enemies** with distinct AI: Scrap Gnat (orbit and strafe), Repo Lancer (wind-up ram), Toll
-  Collector (standoff bursts), Ore Leech (eats ore pickups and siphons your cargo), Litterbug (mines),
-  Complaints Dept. (homing missiles that turrets can shoot down).
+  Collector (standoff bursts), Ore Leech (swarms in close), Litterbug (mines), Complaints Dept. (homing
+  missiles that turrets can shoot down).
 - **4 bosses**, each with multiple phases built from spread, ring, spawn, charge, sweeping-beam and
   missile attacks.
-- **5 sectors**, a **22-node research tree**, **7 presets** (including *Lopsided Larry*, a demonstration
-  of what off-center thrust does), and blueprint save/load/export/import as share codes (`SFBP1:…`).
+- **5 sectors**, a **22-node research tree**, **9 presets** (freighters Pebble, Prospector, Excavator,
+  Leviathan and *Lopsided Larry*, a demonstration of what off-center thrust does; fighters Bastion,
+  Bulwark, Citadel and Doomsday Bastion), and blueprint save/load/export/import as share codes (`SFBP1:…`).
 
 ## Adding content
 
@@ -183,11 +199,15 @@ node tools/check-presets.mjs      # validates every preset (connectivity, exhaus
 node tools/playtest.mjs 300       # real game in headless Chromium, autopilot mines/docks/sells
 node tools/playtest.mjs 300 excavator
 node tools/screenshots.mjs        # key screens at 1280×720, 1920×1080, 1024×768 → docs/screens
+node tools/arena.mjs 10           # REAL fighter sim: each fighter preset vs every sector's board
+node tools/arena-detail.mjs citadel 2 1   # per-contract real results vs the rating model
+node tools/fighter-ratings.mjs    # rating model only: every preset vs every wave and boss
 ```
 
 `playtest.mjs` and `screenshots.mjs` need Playwright with Chromium installed. The autopilot
 ([`tools/autopilot.js`](tools/autopilot.js)) flies the real ship through the real physics and
-fast-forwards game time. Its measured trip times calibrate the economy bot's model.
+fast-forwards game time. Its measured trip times calibrate the economy bot's model, and the arena
+tools calibrate the fighter side.
 
 ## Code map
 
@@ -197,7 +217,8 @@ fast-forwards game time. Its measured trip times calibrate the economy bot's mod
 | `js/shipdesign.js` | blueprint grid, placement rules, connectivity, mass/COM/inertia, builder analysis |
 | `js/ship.js` | runtime rigid body: thruster allocation, gyro flight assist, power, weapons, damage, detachment |
 | `js/world.js` | sector: asteroids, ore pickups, projectiles, collisions (spatial hash), outpost |
-| `js/enemies.js` | contract waves, ambient pirates, AI behaviors, bosses, mines, missiles, beams |
+| `js/fighter.js` | the fighter: its own arena world, auto contracts, AI aim, retreat and repair, offline resolution |
+| `js/enemies.js` | contract waves, AI behaviors, bosses, mines, missiles, beams |
 | `js/contracts.js` | contract wave lists, payouts and difficulty ratings (shared with the bot) |
 | `js/planet.js` | the planet, cracker charge, destruction cinematic and reward |
 | `js/economy.js` | pure rules shared with the bot: prices, research effects, rewards |

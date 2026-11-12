@@ -1,12 +1,12 @@
 // Pure economy rules shared by the game and the headless bot.
-import { UPGRADES, ECONOMY, PARTS, ORES, ASTEROIDS, DRONES, PLANETS, GRID, SECTORS } from './data.js';
+import { UPGRADES, ECONOMY, PARTS, ORES, ASTEROIDS, PLANETS, GRID, SECTORS } from './data.js';
 
 export const UPGRADE_BY_ID = Object.fromEntries(UPGRADES.map((u) => [u.id, u]));
 
 // levels: { [id]: level }
 export function upgradeEffects(levels = {}) {
   const fx = {
-    sellMult: 1, miningMult: 1, yieldMult: 1, droneRate: 0, frame: 0, hpMult: 1, fuelEff: 1,
+    sellMult: 1, miningMult: 1, yieldMult: 1, frame: 0, hpMult: 1, fuelEff: 1, fortify: 0,
     damageMult: 1, rateMult: 1, shieldMult: 1, chargeEff: 1, planetMult: 1, magnetMult: 1,
   };
   for (const u of UPGRADES) {
@@ -15,7 +15,7 @@ export function upgradeEffects(levels = {}) {
     for (const k in u.effect) {
       const v = u.effect[k] * lv;
       if (k === 'fuelEff' || k === 'chargeEff') fx[k] *= Math.max(0.2, 1 - v);
-      else if (k === 'droneRate' || k === 'frame') fx[k] += v;
+      else if (k === 'frame' || k === 'fortify') fx[k] += v;
       else fx[k] += v;
     }
   }
@@ -55,16 +55,6 @@ export function oreFromDamage(dmg, hardness, levels) {
   return (dmg * ASTEROIDS.orePerHp * upgradeEffects(levels).yieldMult) / hardness;
 }
 
-export function droneIncomePerMinute(levels) {
-  const lv = Math.min(DRONES.creditsPerMinutePerLevel.length - 1, levels.drones || 0);
-  return DRONES.creditsPerMinutePerLevel[lv];
-}
-
-export function offlineEarnings(levels, seconds) {
-  const capped = Math.min(seconds, ECONOMY.offlineCapHours * 3600);
-  return Math.floor((droneIncomePerMinute(levels) * capped) / 60);
-}
-
 export function planetReward(count, levels) {
   return Math.floor(PLANETS.baseReward * Math.pow(PLANETS.rewardGrowth, count) * upgradeEffects(levels).planetMult);
 }
@@ -75,3 +65,6 @@ export function sectorUnlocked(index, save) {
 }
 
 export function partCost(id) { return PARTS[id].cost; }
+
+// role filters: which parts / research a ship type uses
+export const partFits = (id, role) => PARTS[id].role === 'both' || PARTS[id].role === role;

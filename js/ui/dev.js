@@ -11,7 +11,6 @@ const FLAGS = [
   ['god', 'God mode', 'Your parts take no damage'],
   ['infFuel', 'Infinite fuel', 'Fuel stays full'],
   ['infPower', 'Infinite power', 'Batteries stay full (no brownouts)'],
-  ['peaceful', 'Peaceful', 'No ambient pirates while mining'],
 ];
 
 export class Dev {
@@ -38,8 +37,8 @@ export class Dev {
     if (!this.on) return;
     const f = this.flags, g = this.game;
     if (f.infCredits && g.save.credits < 1e9) g.save.credits = 1e9;
-    const ship = g.ship;
-    if (ship && (g.state === 'flight' || g.state === 'cinematic')) {
+    for (const ship of [g.ship, g.fighter.ship]) {
+      if (!ship) continue;
       ship.god = !!f.god;
       if (f.infFuel) ship.fuel = ship.fuelMax;
       if (f.infPower) { ship.energy = ship.energyMax; ship.powerFactor = 1; }
@@ -94,7 +93,7 @@ export class Dev {
       el('div', { class: 'dev-grid' }, ...SECTORS.map((sec, i) => el('button', { class: 'btn small' + (s.sector === i ? ' on' : ''), onclick: () => {
         g.jump(i, true, 'dev'); } }, sec.name))),
       el('h3', { style: { marginTop: '12px' } }, 'Sandbox'),
-      el('p', { class: 'dim small' }, 'This slot is separate from your real save. In flight, a dev bar at the bottom spawns enemies and bosses and changes game speed.'),
+      el('p', { class: 'dim small' }, 'This slot is separate from your real save. While watching your fighter, a dev bar at the bottom spawns enemies and bosses and changes game speed.'),
       el('button', { class: 'btn small danger', onclick: () => { if (!confirm('Reset the sandbox to a fresh, fully-upgraded state?')) return; wipeSave(SANDBOX_KEY); g.save = this.freshSave(); g.settings = g.save.settings; g.persist(); g.enterHangar('dev'); } }, 'Reset sandbox'));
 
     c.append(el('div', { class: 'market dev' }, el('div', { class: 'col' }, flags, jump), ups, prog));
@@ -103,15 +102,15 @@ export class Dev {
   // ------------------------------------------------------------ flight bar
   bar() {
     const g = this.game;
-    const show = this.on && g.state === 'flight' && g.ship;
+    const show = this.on && g.state === 'watch' && g.fighter.mode === 'deployed';
     if (!show) { if (this.barEl) { this.barEl.remove(); this.barEl = null; } return; }
     if (this.barEl) {
       this.barEl.querySelector('.dev-god').classList.toggle('on', !!this.flags.god);
       for (const b of this.barEl.querySelectorAll('.dev-speed')) b.classList.toggle('on', Number(b.dataset.s) === g.timeScale);
       return;
     }
-    const es = g.enemySystem;
-    const near = () => { const a = rand(0, TAU); return [g.ship.x + Math.cos(a) * 520, g.ship.y + Math.sin(a) * 520]; };
+    const fi = g.fighter, es = fi.enemySystem;
+    const near = () => { const a = rand(0, TAU); return [Math.cos(a) * 700, Math.sin(a) * 700]; };
     const typeSel = el('select', { class: 'inp dev-sel', onchange: (e) => e.target.blur() }, ...Object.entries(ENEMIES).map(([id, d]) => el('option', { value: id }, d.name)));
     const bossSel = el('select', { class: 'inp dev-sel', onchange: (e) => e.target.blur() }, ...Object.entries(BOSSES).map(([id, d]) => el('option', { value: id }, d.name)));
     const b = (label, fn, cls = '') => el('button', { class: 'btn small ' + cls, onmousedown: (e) => e.preventDefault(), onclick: (e) => { e.currentTarget.blur(); fn(); } }, label);
@@ -120,11 +119,11 @@ export class Dev {
       el('span', { class: 'dev-tag' }, 'DEV'),
       typeSel, b('+1', () => spawn(1)), b('+5', () => spawn(5)),
       bossSel, b('Boss', () => { if (es.boss) return toast('One boss at a time', 'bad'); es.spawnBoss(bossSel.value); }, 'danger'),
-      b('Kill all', () => { for (const e of g.world.enemies) if (!e.dead) es.damage(e, 1e12, e.x, e.y, true); }),
+      b('Kill all', () => { for (const e of fi.world.enemies) if (!e.dead) es.damage(e, 1e12, e.x, e.y, true); }),
       b('God', () => { this.flags.god = !this.flags.god; g.persist(); }, 'dev-god'),
-      b('Repair', () => { for (const p of g.ship.parts) if (p.alive) p.hp = p.maxHp; g.ship.version++; }),
+      b('Repair', () => { for (const p of fi.ship.parts) if (p.alive) p.hp = p.maxHp; fi.ship.version++; }),
       ...[0.25, 1, 2, 4].map((sp) => { const x = b(`×${sp}`, () => { g.timeScale = sp; }, 'dev-speed'); x.dataset.s = sp; return x; }),
-      g.planet && g.planet.p ? b('→ Planet', () => { const p = g.planet.p; const a = Math.atan2(g.ship.y - p.y, g.ship.x - p.x); g.ship.x = p.x + Math.cos(a) * (p.r + 600); g.ship.y = p.y + Math.sin(a) * (p.r + 600); g.ship.vx = g.ship.vy = 0; g.cam.snap(g.ship.x, g.ship.y); }) : '');
+      b('Next wave now', () => { fi.breather = 0; }));
     g.ui.append(this.barEl);
     this.bar();
   }

@@ -3,7 +3,7 @@ import { PHYS, ORES } from '../data.js';
 import { TAU, clamp, fmt, hexA } from '../util.js';
 import { CAT_COLORS } from '../render.js';
 
-function bar(ctx, x, y, w, h, frac, col, label, value) {
+export function bar(ctx, x, y, w, h, frac, col, label, value) {
   ctx.fillStyle = 'rgba(10,14,30,0.8)';
   ctx.fillRect(x, y, w, h);
   ctx.fillStyle = col;
@@ -130,7 +130,8 @@ export function drawRadar(ctx, game, x, y, size) {
   for (const r of world.rocks) if (Math.abs(r.x - ship.x) < range && Math.abs(r.y - ship.y) < range) dot(r.x, r.y, hexA(ORES[r.ore].glow, 0.6), Math.max(1, r.r * k * 0.8));
   for (const p of world.pickups) if (Math.abs(p.x - ship.x) < range && Math.abs(p.y - ship.y) < range) dot(p.x, p.y, ORES[p.ore].glow, 1);
   for (const e of world.enemies) if (!e.dead) dot(e.x, e.y, e.boss ? '#ff3cac' : '#ff5d73', e.boss ? 5 : 2.5);
-  if (game.planet) dot(game.planet.x, game.planet.y, '#ff3cac', 7);
+  const pl = game.planet && game.planet.p;
+  if (pl && !pl.destroyed) dot(pl.x, pl.y, '#ff3cac', 7);
   dot(world.station.x, world.station.y, '#7df9ff', 4.5);
   // sector edge
   ctx.strokeStyle = 'rgba(255,80,120,0.4)';

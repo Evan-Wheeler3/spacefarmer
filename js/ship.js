@@ -10,9 +10,11 @@ const C = PHYS.CELL;
 const key = (x, y) => x + ',' + y;
 
 export class Ship {
-  constructor(design, levels = {}) {
+  constructor(design, levels = {}, role = 'freighter') {
     this.levels = levels;
+    this.role = role;
     this.fx = upgradeEffects(levels);
+    if (role === 'fighter') this.fx = { ...this.fx, hpMult: this.fx.hpMult * (1 + this.fx.fortify) };
     this.design = design.clone();
     const conn = this.design.connected();
     this.parts = [];

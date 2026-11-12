@@ -161,13 +161,14 @@ export class Audio {
     this.engF.frequency.setTargetAtTime(180 + th * 700, t, 0.08);
     this.lasG.gain.setTargetAtTime(laser * 0.06, t, 0.03);
     this.lasF.frequency.setTargetAtTime(800 + Math.sin(t * 13) * 200, t, 0.02);
-    const chg = flying ? Math.max(ship.crackCharge, game.recall ? game.recall / 2 : 0) : 0;
+    const chg = flying ? (game.recall ? game.recall / 2 : 0) : game.state === 'watch' && game.fighter.ship ? game.fighter.ship.crackCharge : 0;
     this.chgG.gain.setTargetAtTime(chg > 0.01 ? 0.05 + chg * 0.08 : 0, t, 0.05);
     this.chgO.frequency.setTargetAtTime(80 + chg * 700, t, 0.05);
     // combat intensity for the music
     let target = 0;
-    if (flying) {
-      for (const e of game.world.enemies) if (!e.dead && Math.hypot(e.x - ship.x, e.y - ship.y) < 1200) { target = e.boss ? 1 : Math.max(target, 0.6); }
+    const f = game.fighter;
+    if (game.state === 'watch' && f && f.world && f.ship) {
+      for (const e of f.world.enemies) if (!e.dead && Math.hypot(e.x, e.y) < 1300) { target = e.boss ? 1 : Math.max(target, 0.6); }
     }
     this.intensity += (target - this.intensity) * 0.02;
   }

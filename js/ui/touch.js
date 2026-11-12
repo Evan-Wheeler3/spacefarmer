@@ -51,7 +51,7 @@ export class TouchControls {
     }
     this.dock = tap('DOCK', 'tc-dock', () => { if (g.state === 'flight' && g.canDock) g.dock(); });
     this.side = el('div', { class: 'tc-side' },
-      tap('❚❚', 'tc-small', () => { if (g.state === 'flight') g.pause(); }),
+      tap('❚❚', 'tc-small', () => { if (g.state === 'flight' || g.state === 'watch') g.pause(); }),
       hold('⟲', 'tc-small tc-recall', 'recall'),
       tap('A', 'tc-small tc-assist', () => { if (g.ship) { g.ship.assist = !g.ship.assist; } }));
     this.right = el('div', { class: 'tc-right' }, el('div', { class: 'tc-row' }, this.strafeL, this.strafeR), this.crack, el('div', { class: 'tc-row tc-bottom' }, this.brake, this.fire));
@@ -86,9 +86,11 @@ export class TouchControls {
   // called every frame by the game (before ship.update)
   update() {
     if (!this.on) return;
-    const g = this.game, ts = Input.touchState, ship = g.ship;
-    const flying = g.state === 'flight' && ship && !ship.dead;
+    const g = this.game, ts = Input.touchState, ship = g.controlledShip;
+    const flying = !!ship && !ship.dead;
     this.root.classList.toggle('hidden', !flying);
+    // the fighter is stationary: no docking, recall, sliding or braking there
+    this.root.classList.toggle('fighter', g.state === 'watch');
     if (!flying) { ts.thrust = 0; ts.turn = 0; return; }
     this.dock.classList.toggle('show', !!g.canDock);
     this.crack.classList.toggle('show', ship.parts.some((p) => p.alive && p.def.cracker));

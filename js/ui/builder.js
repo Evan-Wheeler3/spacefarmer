@@ -1,7 +1,9 @@
 // Shipyard: grid builder wired to the real physics analysis.
 import { PARTS, GRID, PHYS, PRESETS, ORES, SECTORS } from '../data.js';
 import { Design, analyze, footprint, entryCells, entryCenter, inFrame, edgeCells } from '../shipdesign.js';
-import { frameSize, partUnlocked, UPGRADE_BY_ID, oreFromDamage } from '../economy.js';
+import { frameSize, partUnlocked, UPGRADE_BY_ID, oreFromDamage, partFits } from '../economy.js';
+import { rate } from '../contracts.js';
+import { nextContract, bossThreat } from '../contracts.js';
 import { drawPart, CAT_COLORS } from '../render.js';
 import { el, toast, modal, popEl } from './dom.js';
 import { TAU, DIRS, easeOutBack, money, fmt, rand, hexA, clamp } from '../util.js';
@@ -34,8 +36,20 @@ export class Builder {
 
   get save() { return this.game.save; }
 
+  get role() { return this._role || 'freighter'; }
+  get src() { return this.role === 'fighter' ? this.save.fighter.design : this.save.design; }
+  set src(v) { if (this.role === 'fighter') this.save.fighter.design = v; else this.save.design = v; }
+  setRole(r) {
+    if (r === this.role) return;
+    const c = this.root?.parentElement;
+    this._role = r;
+    this.game.sfx('click');
+    if (c) { this.unmount(); this.mount(c); }
+  }
+
   mount(container) {
-    this.design = Design.fromJSON(this.save.design);
+    if (this.role === 'fighter') this.game.fighter.stash();
+    this.design = Design.fromJSON(this.src);
     this.frame = frameSize(this.save.upgrades);
     this.zoomHalf = null;
     this.history = [this.snapshot()];
@@ -56,7 +70,10 @@ export class Builder {
       pan: tb('✋ Pan', 'Touch: drag to move the view (or use two fingers)', () => this.setTool('pan'), 'tool'),
     };
     this.btnForces = tb('➚ Forces', 'Show thrust vectors and center of mass', () => { this.showForces = !this.showForces; this.btnForces.classList.toggle('on', this.showForces); }, 'on');
-    const toolbar = el('div', { class: 'b-toolbar' },
+    const sw = el('div', { class: 'ship-switch' },
+      el('button', { class: 'btn small' + (this.role === 'freighter' ? ' on' : ''), title: 'The ship you fly: mining and hauling', onclick: () => this.setRole('freighter') }, '⛏ Freighter'),
+      el('button', { class: 'btn small' + (this.role === 'fighter' ? ' on' : ''), title: 'Your stationary defense platform: works contracts on its own', onclick: () => this.setRole('fighter') }, '⚔ Fighter'));
+    const toolbar = el('div', { class: 'b-toolbar' }, sw,
       ...Object.values(this.toolBtns),
       this.btnUndo, this.btnRedo,
       tb('⟳ Rotate', 'R or mouse wheel', () => this.rotate(1)),
@@ -140,7 +157,7 @@ export class Builder {
     this.palette.innerHTML = '';
     this.cards = {};
     for (const [cat, label] of CATS) {
-      const ids = Object.keys(PARTS).filter((id) => PARTS[id].cat === cat);
+      const ids = Object.keys(PARTS).filter((id) => PARTS[id].cat === cat && partFits(id, this.role));
       if (!ids.length) continue;
       this.palette.append(el('div', { class: 'b-cat', style: { color: CAT_COLORS[cat] } }, label));
       for (const id of ids) {
@@ -396,8 +413,8 @@ export class Builder {
   redo() { if (this.hidx >= this.history.length - 1) return; this.hidx++; this.restore(this.history[this.hidx]); this.game.sfx('undo'); }
 
   commit() {
-    this.save.design = this.design.toJSON();
-    this.game.onDesignChanged();
+    this.src = this.design.toJSON();
+    this.game.onDesignChanged(this.role);
   }
 
   clearAll() {
@@ -411,6 +428,7 @@ export class Builder {
     const d = Design.fromJSON({ cells });
     if (!d.hasCore()) return this.deny('That blueprint has no Command Core.');
     for (const e of d.entries) {
+      if (!partFits(e.part, this.role)) return this.deny(`${PARTS[e.part].name} can't go on your ${this.role}. ${this.role === 'freighter' ? 'Weapons and shields belong on the fighter.' : 'Mining gear and engines belong on the freighter.'}`);
       if (!partUnlocked(e.part, this.save.upgrades)) return this.deny(`Needs ${PARTS[e.part].name} (research ${UPGRADE_BY_ID[PARTS[e.part].unlock].name}).`);
       for (const [x, y] of entryCells(e)) if (!inFrame(x, y, this.frame)) return this.deny(`Too big for your ${this.frame}×${this.frame} frame. Research Frame Extension.`);
     }
@@ -442,7 +460,7 @@ export class Builder {
   presetsDialog() {
     const list = el('div', { class: 'bp-list' });
     let dlg;
-    for (const [id, p] of Object.entries(PRESETS)) {
+    for (const [id, p] of Object.entries(PRESETS).filter(([, p]) => p.role === this.role)) {
       const d = Design.fromJSON({ cells: p.cells });
       const cost = d.value() - refundValue(this.design);
       const locked = d.entries.find((e) => !partUnlocked(e.part, this.save.upgrades));
@@ -464,12 +482,13 @@ export class Builder {
       const name = el('input', { type: 'text', placeholder: 'Blueprint name', maxlength: 40, class: 'inp' });
       body.append(el('div', { class: 'bp-row' }, name, el('button', { class: 'btn small primary', onclick: () => {
         const n = name.value.trim() || `Design ${this.save.blueprints.length + 1}`;
-        this.save.blueprints.push({ name: n, cells: this.design.pristine().toJSON().cells });
+        this.save.blueprints.push({ name: n, role: this.role, cells: this.design.pristine().toJSON().cells });
         this.game.persist(); toast(`Saved “${n}”`, 'good'); this.game.sfx('click'); render();
       } }, 'Save current')));
       const list = el('div', { class: 'bp-list' });
       if (!this.save.blueprints.length) list.append(el('p', { class: 'dim' }, 'No saved blueprints yet.'));
       this.save.blueprints.forEach((bp, i) => {
+        if ((bp.role || 'freighter') !== this.role && !bp.cells.every(([p]) => PARTS[p] && partFits(p, this.role))) return;
         list.append(el('div', { class: 'bp-item' }, this.previewCanvas(bp.cells, 80),
           el('div', { class: 'bp-text' }, el('b', {}, bp.name), el('div', { class: 'dim' }, `${bp.cells.length} parts · value ${money(Design.fromJSON({ cells: bp.cells }).value())}`)),
           el('div', { class: 'bp-btns' },
@@ -492,7 +511,8 @@ export class Builder {
         el('button', { class: 'btn small primary', onclick: () => {
           try {
             const bp = importBlueprint(exportBox.value);
-            this.save.blueprints.push({ name: bp.name, cells: bp.cells });
+            const role = bp.cells.some(([p]) => PARTS[p] && PARTS[p].role === 'fighter') ? 'fighter' : 'freighter';
+            this.save.blueprints.push({ name: bp.name, role, cells: bp.cells });
             this.game.persist(); toast(`Imported “${bp.name}”`, 'good'); render();
           } catch (err) { toast(err.message, 'bad'); }
         } }, 'Import')));
@@ -503,35 +523,51 @@ export class Builder {
 
   // ------------------------------------------------------------ stats
   refresh() {
-    this.analysis = analyze(this.design, this.save.upgrades);
+    this.analysis = analyze(this.design, this.save.upgrades, { role: this.role });
     const a = this.analysis;
-    const sector = SECTORS[this.save.sector] || SECTORS[0];
+    const fighter = this.role === 'fighter';
+    const sector = SECTORS[fighter ? this.save.fighter.sector : this.save.sector] || SECTORS[0];
     const oreRate = oreFromDamage(a.mining, sector.hardness, this.save.upgrades);
     const row = (k, v, cls = '', bar = null) => el('div', { class: 's-row' }, el('span', { class: 'dim' }, k), el('span', { class: cls }, v),
       bar ? el('div', { class: 's-bar' }, el('i', { style: { width: clamp(bar[0], 0, 1) * 100 + '%', background: bar[1] } })) : '');
     const powerOk = a.gen >= a.peakDraw;
+    const power = row('Power', `+${a.gen.toFixed(1)} / -${a.peakDraw.toFixed(1)} peak`, powerOk ? 'good' : 'warn', [a.gen / Math.max(0.1, a.peakDraw), powerOk ? '#ffd60a' : '#ff5d73']);
+    const diag = [el('div', { class: 's-head' }, 'DIAGNOSTICS'),
+      el('div', { class: 's-warns' }, a.warnings.length ? a.warnings.map((w) => el('div', { class: 'w-' + w.lvl }, (w.lvl === 'err' ? '✖ ' : w.lvl === 'warn' ? '⚠ ' : 'ℹ ') + w.text)) : el('div', { class: 'w-ok' }, '✔ All systems nominal. Suspiciously so.'))];
     this.stats.innerHTML = '';
-    this.stats.append(
-      el('div', { class: 's-head' }, 'FLIGHT'),
-      row('Mass', `${a.mass.toFixed(1)} t  (${a.loadedMass.toFixed(1)} loaded)`),
-      row('Acceleration', `${a.accel.toFixed(0)} px/s²`, a.accel < 60 ? 'warn' : 'good', [a.accel / 250, '#ff9f1c']),
-      row('Thrust-to-weight', `${a.twr.toFixed(2)} g  (${(a.accelLoaded / 100).toFixed(2)} loaded)`),
-      row('90° turn', isFinite(a.turn90) ? `${a.turn90.toFixed(2)} s` : '—', a.turn90 > 1.6 ? 'warn' : '', [1 - a.turn90 / 3, '#ff9f1c']),
-      row('Off-center torque', `${Math.round((a.imbalance / Math.max(1, a.gyroTorque)) * 100)}% of gyros`, a.imbalance > a.gyroTorque * 0.95 ? 'bad' : a.imbalance > a.gyroTorque * 0.45 ? 'warn' : 'good', [a.imbalance / Math.max(1, a.gyroTorque), a.imbalance > a.gyroTorque ? '#ff5d73' : '#2ee6a6']),
-      row('Reverse / strafe', `${fmt(a.thrustBack)} / ${fmt(Math.min(a.thrustLeft, a.thrustRight))}`),
-      el('div', { class: 's-head' }, 'SYSTEMS'),
-      row('Power', `+${a.gen.toFixed(1)} / -${a.peakDraw.toFixed(1)} peak`, powerOk ? 'good' : 'warn', [a.gen / Math.max(0.1, a.peakDraw), powerOk ? '#ffd60a' : '#ff5d73']),
-      row('Battery', `${a.battery}`),
-      row('Fuel', `${a.fuel}  (${isFinite(a.endurance) ? Math.round(a.endurance) + 's full burn' : '—'})`),
-      row('Cargo', `${a.cargo} ore`),
-      row('Mining', `${oreRate.toFixed(2)} ore/s here`),
-      row('Weapons', `${a.dps.toFixed(0)} dps`),
-      a.shield ? row('Shield', `${a.shield.toFixed(0)} (+${a.shieldRegen.toFixed(0)}/s)`) : '',
-      row('Hull', `${Math.round(a.hp)} hp`),
-      row('Ship value', money(a.value), 'money'),
-      el('div', { class: 's-head' }, 'DIAGNOSTICS'),
-      el('div', { class: 's-warns' }, a.warnings.length ? a.warnings.map((w) => el('div', { class: 'w-' + w.lvl }, (w.lvl === 'err' ? '✖ ' : w.lvl === 'warn' ? '⚠ ' : 'ℹ ') + w.text)) : el('div', { class: 'w-ok' }, '✔ All systems nominal. Suspiciously so.')),
-    );
+    if (fighter) {
+      const n = nextContract(this.save, this.save.fighter.sector);
+      const r = n ? rate(a, n.kind === 'boss' ? n.foe : n.wave) : null;
+      this.stats.append(
+        el('div', { class: 's-head' }, 'DEFENSE PLATFORM'),
+        row('Weapons', `${a.dps.toFixed(0)} dps`, a.dps > 0 ? 'good' : 'bad'),
+        row('Hull', `${Math.round(a.hp)} hp`),
+        a.shield ? row('Shield', `${a.shield.toFixed(0)} (+${a.shieldRegen.toFixed(0)}/s)`) : row('Shield', 'none', 'dim'),
+        row('Aim (90° turn)', isFinite(a.turn90) ? `${a.turn90.toFixed(2)} s` : '—', '', [1 - a.turn90 / 3, '#ff9f1c']),
+        power, row('Battery', `${a.battery}`),
+        row('Ship value', money(a.value), 'money'),
+        r ? el('div', { class: 's-head' }, `NEXT: ${sector.name.toUpperCase()}`) : '',
+        r ? row(n.kind === 'boss' ? 'Boss' : `Contract ${n.k + 1}/${n.total}`, r.label, '', [1 - Math.min(1, r.risk), r.color]) : '',
+        ...diag);
+    } else {
+      this.stats.append(
+        el('div', { class: 's-head' }, 'FLIGHT'),
+        row('Mass', `${a.mass.toFixed(1)} t  (${a.loadedMass.toFixed(1)} loaded)`),
+        row('Acceleration', `${a.accel.toFixed(0)} px/s²`, a.accel < 60 ? 'warn' : 'good', [a.accel / 250, '#ff9f1c']),
+        row('Thrust-to-weight', `${a.twr.toFixed(2)} g  (${(a.accelLoaded / 100).toFixed(2)} loaded)`),
+        row('90° turn', isFinite(a.turn90) ? `${a.turn90.toFixed(2)} s` : '—', a.turn90 > 1.6 ? 'warn' : '', [1 - a.turn90 / 3, '#ff9f1c']),
+        row('Off-center torque', `${Math.round((a.imbalance / Math.max(1, a.gyroTorque)) * 100)}% of gyros`, a.imbalance > a.gyroTorque * 0.95 ? 'bad' : a.imbalance > a.gyroTorque * 0.45 ? 'warn' : 'good', [a.imbalance / Math.max(1, a.gyroTorque), a.imbalance > a.gyroTorque ? '#ff5d73' : '#2ee6a6']),
+        row('Reverse / strafe', `${fmt(a.thrustBack)} / ${fmt(Math.min(a.thrustLeft, a.thrustRight))}`),
+        el('div', { class: 's-head' }, 'SYSTEMS'),
+        power, row('Battery', `${a.battery}`),
+        row('Fuel', `${a.fuel}  (${isFinite(a.endurance) ? Math.round(a.endurance) + 's full burn' : '—'})`),
+        row('Cargo', `${a.cargo} ore`),
+        row('Mining', `${oreRate.toFixed(2)} ore/s here`),
+        row('Ore magnet', `${Math.round(a.magnet)} px`),
+        row('Hull', `${Math.round(a.hp)} hp`),
+        row('Ship value', money(a.value), 'money'),
+        ...diag);
+    }
     this.btnUndo.disabled = this.hidx <= 0;
     this.btnRedo.disabled = this.hidx >= this.history.length - 1;
     this.game.onBuilderRefresh && this.game.onBuilderRefresh(a);

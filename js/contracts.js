@@ -3,7 +3,8 @@
 import { SECTORS, ENEMIES, BOSSES, CONTRACTS } from './data.js';
 import { rng } from './util.js';
 
-export const ACCURACY = 0.6; // share of listed weapon dps that actually lands
+export const ACCURACY = 0.6;   // share of listed weapon dps that actually lands
+const STATIONARY = 1.5;        // waves land more hits on a platform that can't dodge
 
 export function contractWave(sectorIndex, k) {
   const sec = SECTORS[sectorIndex];
@@ -31,17 +32,20 @@ export function contractPay(sectorIndex, k, cleared = false) {
   return Math.round((sec.contractPay * Math.pow(CONTRACTS.payGrowth, k) * (cleared ? CONTRACTS.repeatPay : 1)) / 10) * 10;
 }
 
+// Sustained damage a boss lands on a STATIONARY platform (the fighter can't dodge):
+// most of a spread hits, beams sweep across it, charges always connect, turrets
+// shoot down some missiles, and spawned adds join in.
 export function bossThreat(boss) {
   let total = 0;
   for (const ph of boss.phases) {
     let d = 0;
     for (const a of ph.attacks) {
-      if (a.type === 'spread') d += (a.damage * Math.min(3, a.count)) / a.every * 0.35;
-      if (a.type === 'ring') d += (a.damage * 2) / a.every * 0.4;
-      if (a.type === 'beam') d += (a.damage * a.duration * 0.3) / a.every;
-      if (a.type === 'charge') d += (a.damage * 0.5) / a.every;
-      if (a.type === 'missiles') d += (a.damage * a.count * 0.35) / a.every;
-      if (a.type === 'spawn') d += (ENEMIES[a.enemy].threat * a.count * 4) / a.every;
+      if (a.type === 'spread') d += (a.damage * a.count * 0.6) / a.every;
+      if (a.type === 'ring') d += (a.damage * 1.5) / a.every;
+      if (a.type === 'beam') d += (a.damage * a.duration * 0.6) / a.every;
+      if (a.type === 'charge') d += a.damage / a.every;
+      if (a.type === 'missiles') d += (a.damage * a.count * 0.5) / a.every;
+      if (a.type === 'spawn') d += (ENEMIES[a.enemy].threat * a.count * 6) / a.every;
     }
     total += d;
   }
@@ -51,7 +55,8 @@ export function bossThreat(boss) {
 // a = shipdesign analysis. Returns { label, color, ttk, risk } where risk = expected damage / effective hp.
 export function rate(a, foe) {
   const ttk = foe.hp / Math.max(0.1, a.dps * ACCURACY);
-  const incoming = Math.max(0, foe.dps - a.shieldRegen * 0.5) * ttk;
+  // shields only regenerate between hits, so under sustained fire they barely help
+  const incoming = Math.max(0, foe.dps * STATIONARY - a.shieldRegen * 0.15) * ttk;
   const risk = incoming / Math.max(1, a.hp * 0.6 + a.shield);
   const [label, color] = a.dps <= 0 ? ['No weapons', '#ff5d73']
     : risk < 0.25 ? ['Easy', '#2ee6a6'] : risk < 0.6 ? ['Fair', '#a5e05a'] : risk < 1 ? ['Hard', '#ffcf5a'] : ['Deadly', '#ff5d73'];

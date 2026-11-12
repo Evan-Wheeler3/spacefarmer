@@ -12,12 +12,13 @@ import { el, toast, popEl, modal } from './ui/dom.js';
 import { loadSave, newSave, writeSave, wipeSave, SANDBOX_KEY } from './save.js';
 import { Dev } from './ui/dev.js';
 import { TouchControls } from './ui/touch.js';
-import { sellValue, offlineEarnings, droneIncomePerMinute, sectorUnlocked } from './economy.js';
+import { sellValue, sectorUnlocked, partFits } from './economy.js';
 import { money, fmt, pick, clamp, TAU } from './util.js';
 import { P_GLOW } from './particles.js';
-import { EnemySystem } from './enemies.js';
-import { PlanetSystem } from './planet.js';
-import { renderResearch, renderStarMap, goalCard, contractCard } from './ui/research.js';
+import { FighterSim, newFighterSave } from './fighter.js';
+import { drawRadar, bar as hudBar } from './ui/hud.js';
+import { renderResearch, renderStarMap, goalCard } from './ui/research.js';
+import { renderFighter } from './ui/fighterTab.js';
 import { Tutorial } from './ui/tutorial.js';
 import { Audio } from './audio.js';
 
@@ -36,24 +37,23 @@ export class Game {
     this.systems = [];       // optional subsystems: { update(dt), draw(ctx), hud(ctx), onLaunch(), onDock() }
     this.saveKey = undefined;   // main slot; the dev sandbox uses SANDBOX_KEY
     this.timeScale = 1;
-    this.save = loadSave();
+    this.save = this.migrate(loadSave());
     this.settings = this.save ? this.save.settings : newSave().settings;
     this.hangar = new Hangar(this);
-    this.enemySystem = new EnemySystem(this);
-    this.planetSystem = new PlanetSystem(this);
+    this.fighter = new FighterSim(this);
     this.tutorial = new Tutorial(this);
     this.dev = new Dev(this);
     this.touchControls = new TouchControls(this);
-    this.systems.push(this.enemySystem, this.planetSystem, this.tutorial, this.dev);
+    this.systems.push(this.tutorial, this.dev);
     this.audio = new Audio();
     const unlock = () => { this.audio.unlock(); this.audio.setVolume(this.settings.volume, this.settings.music); };
     addEventListener('pointerdown', unlock);
     addEventListener('touchend', unlock);
     addEventListener('keydown', unlock);
-    this.hangar.addTab('research', 'Research', (c) => renderResearch(this, c), 'shipyard');
+    this.hangar.addTab('fighter', '⚔ Fighter', (c) => renderFighter(this, c), 'shipyard');
+    this.hangar.addTab('research', 'Research', (c) => renderResearch(this, c), 'fighter');
     this.hangar.addTab('map', 'Star Map', (c) => renderStarMap(this, c), 'research');
     this.goalCard = () => goalCard(this);
-    this.contractCard = () => contractCard(this);
     this.stars = new Starfield(SECTORS[this.save ? this.save.sector : 0].bg, 7);
     Input.init(canvas);
     addEventListener('resize', () => this.resize());
@@ -93,9 +93,28 @@ export class Game {
   applySettings() { this.audio && this.audio.setVolume(this.settings.volume, this.settings.music); this.persist(); }
 
   // ------------------------------------------------------------- save
+  // Older saves: give them a fighter, and move any guns/shields off the freighter (refunded).
+  migrate(save) {
+    if (!save) return save;
+    if (!save.fighter) save.fighter = newFighterSave(save.sector || 0);
+    const d = Design.fromJSON(save.design);
+    let refund = 0, moved = 0;
+    for (let i = d.entries.length - 1; i >= 0; i--) {
+      const e = d.entries[i];
+      if (!partFits(e.part, 'freighter')) { refund += Math.floor(PARTS[e.part].cost * (e.hp ?? 1)); moved++; d.removeIndex(i); }
+    }
+    if (moved) {
+      save.design = d.toJSON();
+      save.credits += refund;
+      save.pendingNotice = `Your freighter no longer carries weapons: ${moved} gun/shield part(s) were sold back for ${money(refund)}. Fighting is now your fighter's job — see the Fighter tab.`;
+    }
+    return save;
+  }
+
   persist() {
     if (!this.save) return;
     if (this.state === 'flight' && this.ship && !this.ship.dead) this.stashShip();
+    this.fighter && this.fighter.stash();
     writeSave(this.save, this.saveKey);
   }
   stashShip() {
@@ -127,7 +146,7 @@ export class Game {
     }
   }
 
-  repairCost(design) {
+  repairCost(design, mult = 1) {
     let total = 0, damaged = 0;
     for (const e of design.entries) {
       const hp = e.hp == null ? 1 : e.hp;
@@ -136,7 +155,7 @@ export class Game {
       const cost = PARTS[e.part].cost || 60;
       total += hp === 0 ? cost * ECONOMY.destroyedPartRepairFactor : cost * (1 - hp) * ECONOMY.repairCostFactor;
     }
-    return { total: Math.ceil(total), damaged };
+    return { total: Math.ceil(total * mult), damaged };
   }
 
   repair() {
@@ -171,7 +190,11 @@ export class Game {
     this.hangar.updateLaunch();
   }
 
-  onDesignChanged() { this.hangar.updateCredits(); this.hangar.updateLaunch(); this.persist(); }
+  onDesignChanged(role = 'freighter') {
+    this.hangar.updateCredits(); this.hangar.updateLaunch();
+    if (role === 'fighter') { this.fighter.clearFails(); this.fighter.redeploy(); }
+    this.persist();
+  }
 
   // ----------------------------------------------------------- states
   boot() {
@@ -183,7 +206,7 @@ export class Game {
   showTitle() {
     this.state = 'title';
     this.clearOverlays();
-    if (this.saveKey) { this.saveKey = undefined; this.timeScale = 1; this.save = loadSave(); if (this.save) this.settings = this.save.settings; }
+    if (this.saveKey) { this.saveKey = undefined; this.timeScale = 1; this.save = this.migrate(loadSave()); if (this.save) this.settings = this.save.settings; this.fighter.mode = 'idle'; this.fighter.world = null; }
     const has = !!this.save;
     const t = el('div', { class: 'title' },
       el('div', { class: 'title-logo' }, 'SPACE FARMER'),
@@ -196,21 +219,23 @@ export class Game {
         } }, 'NEW GAME'),
         el('button', { class: 'btn big-btn', title: 'Separate save slot with every upgrade, cheats and spawn tools. Never touches your real progress.', onclick: () => this.startSandbox() }, 'DEV SANDBOX')),
       has ? el('div', { class: 'dim' }, `${money(this.save.credits)} · ${SECTORS[this.save.sector].name} · ${this.save.planetsDestroyed} planet(s) destroyed`) : '',
-      el('div', { class: 'title-help dim' }, this.touch ? 'Left thumb: drag to fly · Right thumb: FIRE · tap DOCK at the outpost' : 'W/S thrust · A/D turn · Q/E strafe · Space mine/fire · G start a contract · F dock · Esc pause'));
+      el('div', { class: 'title-help dim' }, this.touch ? 'Left thumb: drag to fly · Right thumb: FIRE · tap DOCK at the outpost' : 'W/S thrust · A/D turn · Q/E strafe · X brake · Space mine · F dock · V watch your fighter · Esc pause'));
     this.overlay = t;
     this.ui.append(t);
   }
 
   clearOverlays() {
     document.body.classList.remove('flying');
-    this.enemySystem && this.enemySystem.panelUpdate();
+    this.watchPanel && (this.watchPanel.remove(), (this.watchPanel = null));
+    this.chip && (this.chip.remove(), (this.chip = null));
     this.dev && this.dev.bar();
     if (this.overlay) { this.overlay.remove(); this.overlay = null; }
     this.hangar.close();
   }
 
   newGame() {
-    this.save = newSave();
+    this.save = this.migrate(newSave());
+    this.fighter.mode = 'idle'; this.fighter.world = null;
     this.settings = this.save.settings;
     this.persist();
     this.audio && this.audio.unlock();
@@ -222,7 +247,8 @@ export class Game {
   startSandbox() {
     this.persist();
     this.saveKey = SANDBOX_KEY;
-    this.save = loadSave(SANDBOX_KEY) || this.dev.freshSave();
+    this.save = this.migrate(loadSave(SANDBOX_KEY) || this.dev.freshSave());
+    this.fighter.mode = 'idle'; this.fighter.world = null;
     this.settings = this.save.settings;
     this.audio && this.audio.unlock();
     this.lastTrip = null;
@@ -231,13 +257,19 @@ export class Game {
 
   continueGame() {
     this.audio && this.audio.unlock();
-    // idle drones earned money while you were away
+    this.fighter.mode = 'idle'; this.fighter.world = null;
+    // the fighter kept working while you were away
     const away = (Date.now() - (this.save.lastSeen || Date.now())) / 1000;
-    const earned = offlineEarnings(this.save.upgrades, away);
+    const res = away > 60 ? this.fighter.offline(away) : null;
     this.enterHangar('market');
-    if (earned > 0) {
-      this.addCredits(earned);
-      modal('Welcome back', el('p', {}, `Your drones kept working while you were away and banked `, el('span', { class: 'money' }, money(earned)), '. They did not take a lunch break. You should probably talk to them about that.'), [{ label: 'Nice', cls: 'primary' }]);
+    if (this.save.pendingNotice) { modal('Ships reorganised', el('p', {}, this.save.pendingNotice), [{ label: 'Got it', cls: 'primary' }]); delete this.save.pendingNotice; }
+    if (res && (res.contracts || res.retreats)) {
+      this.hangar.updateCredits();
+      modal('Welcome back', el('div', {},
+        el('p', {}, `While you were away your fighter cleared ${res.contracts} contract(s) and earned `, el('span', { class: 'money' }, money(res.earned)), '.'),
+        res.bosses.length ? el('p', { class: 'good' }, `It also defeated ${res.bosses.join(', ')}.`) : '',
+        res.retreats ? el('p', { class: 'dim' }, `It retreated ${res.retreats} time(s); repairs cost ${money(res.repairs)}. Upgrading it would help.`) : ''),
+        [{ label: 'Nice', cls: 'primary' }]);
     }
   }
 
@@ -300,6 +332,76 @@ export class Game {
     toast(viaRecall ? 'Recalled to the outpost' : pick(FLAVOR.docks));
   }
 
+  // ---------------------------------------------------- watching the fighter
+  get controlledShip() {
+    if (this.state === 'flight') return this.ship;
+    if (this.state === 'watch' && this.fighter.manual && this.fighter.mode === 'deployed') return this.fighter.ship;
+    return null;
+  }
+
+  enterWatch() {
+    if (this.state === 'watch') return;
+    this.watchFrom = this.state === 'flight' ? 'flight' : 'hangar';
+    if (this.watchFrom === 'flight') this.stashShip();
+    this.clearOverlays();
+    this.state = 'watch';
+    this.fighter.watching = true;
+    if (this.fighter.mode === 'idle') this.fighter.deploy();
+    document.body.classList.add('flying', 'watching');
+    this.cam.snap(0, 0);
+    this.stars.setTheme(SECTORS[this.fighter.sectorIndex].bg, 7 + this.fighter.sectorIndex);
+    this.buildWatchPanel();
+  }
+
+  exitWatch() {
+    if (this.state !== 'watch') return;
+    this.fighter.watching = false;
+    this.fighter.manual = false;
+    this.cam.override = null;
+    document.body.classList.remove('watching');
+    if (this.watchPanel) { this.watchPanel.remove(); this.watchPanel = null; }
+    this.stars.setTheme(SECTORS[this.save.sector].bg, 7 + this.save.sector);
+    if (this.watchFrom === 'flight' && this.ship && !this.ship.dead) {
+      this.state = 'flight';
+      document.body.classList.add('flying');
+      this.cam.snap(this.ship.x, this.ship.y);
+    } else this.enterHangar('fighter');
+  }
+
+  buildWatchPanel() {
+    const f = this.fighter;
+    const status = el('span', { class: 'w-status' });
+    const autoBtn = el('button', { class: 'btn small', onclick: (e) => { e.currentTarget.blur(); f.fs.auto = !f.fs.auto; if (f.fs.auto && f.mode === 'idle') f.deploy(); this.persist(); } });
+    const ctrlBtn = el('button', { class: 'btn small', onclick: (e) => { e.currentTarget.blur(); f.manual = !f.manual; this.sfx('click'); } });
+    const back = el('button', { class: 'btn small primary', onclick: (e) => { e.currentTarget.blur(); this.exitWatch(); } }, this.watchFrom === 'flight' ? '◀ Freighter' : '◀ Hangar');
+    this.watchPanel = el('div', { class: 'watch' }, el('span', { class: 'w-tag' }, 'FIGHTER'), status, autoBtn, ctrlBtn, back);
+    this.ui.append(this.watchPanel);
+    const refresh = () => {
+      if (!this.watchPanel) return;
+      status.textContent = `${SECTORS[f.sectorIndex].name} · ${f.status()}`;
+      autoBtn.textContent = f.fs.auto ? 'Auto: ON' : 'Auto: OFF';
+      autoBtn.classList.toggle('on', f.fs.auto);
+      ctrlBtn.textContent = f.manual ? 'Hand back to AI' : (this.touch ? 'Take control' : 'Take control (turn A/D · fire Space)');
+      ctrlBtn.classList.toggle('on', f.manual);
+      ctrlBtn.disabled = f.mode !== 'deployed';
+      setTimeout(refresh, 250);
+    };
+    refresh();
+  }
+
+  // small fighter status chip while you fly the freighter
+  updateChip() {
+    const show = this.state === 'flight' && this.save?.fighter;
+    if (!show) { if (this.chip) { this.chip.remove(); this.chip = null; } return; }
+    if (!this.chip) {
+      this.chip = el('div', { class: 'fchip', onclick: () => this.enterWatch(), title: 'Watch your fighter (V)' });
+      this.ui.append(this.chip);
+    }
+    const txt = '⚔ Fighter · ' + this.fighter.status() + ' ▸';
+    if (this.chip.textContent !== txt) this.chip.textContent = txt;
+    this.chip.classList.toggle('alert', this.fighter.mode === 'repairing' || this.fighter.hull() < 0.5);
+  }
+
   onShipDestroyed() {
     this.save.stats.deaths++;
     this.dyingT = 2.8;
@@ -335,7 +437,7 @@ export class Game {
       this._fpsAcc += dt; this._fpsN++;
       if (this._fpsAcc > 0.5) { this.fps = this._fpsN / this._fpsAcc; this._fpsAcc = 0; this._fpsN = 0; }
       Input.pollPad();
-      this.acc += dt * (this.state === 'flight' || this.state === 'cinematic' ? this.timeScale : 1);
+      this.acc += dt * (this.state === 'flight' || this.state === 'watch' ? this.timeScale : 1);
       let steps = 0;
       const maxSteps = 6 * Math.max(1, this.timeScale);
       while (this.acc >= STEP && steps < maxSteps) { this.update(STEP); this.acc -= STEP; steps++; }
@@ -351,20 +453,23 @@ export class Game {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
     if (e.code === 'Escape') {
       if (document.querySelector('.modal-back')) { document.querySelector('.modal-back').remove(); return; }
-      if (this.state === 'flight') this.pause();
+      if (this.state === 'flight' || this.state === 'watch') this.pause();
       else if (this.state === 'paused') this.resume();
     }
+    if (e.code === 'KeyV' && (this.state === 'flight' || this.state === 'hangar') && !document.querySelector('.modal-back')) this.enterWatch();
+    else if ((e.code === 'KeyV' || e.code === 'Backspace') && this.state === 'watch') this.exitWatch();
     if (e.code === 'Enter' && this.state === 'hangar' && !document.querySelector('.modal-back') && this.hangar.tab !== 'shipyard') this.launch();
     if (e.code === 'Enter' && this.state === 'hangar' && this.hangar.tab === 'shipyard' && e.ctrlKey) this.launch();
   }
 
   pause() {
+    this.pausedFrom = this.state;
     this.state = 'paused';
     this.persist();
     const p = el('div', { class: 'pause' }, el('h1', {}, 'PAUSED'),
       el('button', { class: 'btn primary big-btn', onclick: () => this.resume() }, 'Resume'),
-      el('button', { class: 'btn big-btn', onclick: () => { this.resume(); this.recallAuto = true; } }, 'Recall to outpost'),
-      el('button', { class: 'btn big-btn', onclick: () => { this.persist(); this.overlay = null; p.remove(); this.ship = null; this.showTitle(); } }, 'Save & quit to title'),
+      this.pausedFrom === 'flight' ? el('button', { class: 'btn big-btn', onclick: () => { this.resume(); this.recallAuto = true; } }, 'Recall to outpost') : '',
+      el('button', { class: 'btn big-btn', onclick: () => { this.persist(); this.overlay = null; p.remove(); this.fighter.watching = false; this.fighter.manual = false; document.body.classList.remove('watching'); this.ship = null; this.showTitle(); } }, 'Save & quit to title'),
       el('div', { class: 'dim' }, 'Progress autosaves continuously.'));
     this.overlay = p;
     this.ui.append(p);
@@ -372,21 +477,17 @@ export class Game {
   }
   resume() {
     if (this.overlay) { this.overlay.remove(); this.overlay = null; }
-    this.state = 'flight';
+    this.state = this.pausedFrom || 'flight';
     this.audio && this.audio.duck(false);
   }
 
   update(dt) {
     this.time += dt;
     this.touchControls.update();
-    if (this.save && this.state !== 'title') {
-      this.save.stats.playTime += dt;
-      const dpm = droneIncomePerMinute(this.save.upgrades);
-      if (dpm > 0 && this.state !== 'paused') {
-        this._drone = (this._drone || 0) + (dpm / 60) * dt;
-        if (this._drone >= 1) { const n = Math.floor(this._drone); this._drone -= n; this.save.credits += n; this.save.stats.earned += n; if (this.state === 'hangar' && Math.random() < 0.02) this.hangar.updateCredits(); }
-      }
-    }
+    if (this.save && this.state !== 'title') this.save.stats.playTime += dt;
+    // the fighter works in parallel with whatever you're doing (not while paused or in a dialog)
+    if (this.save && this.state !== 'title' && this.state !== 'paused' && !(this.state === 'watch' && document.querySelector('.modal-back'))) this.fighter.update(dt);
+    this.updateChip();
     if (this.state === 'title') {
       this.titleWorld.update(dt, null);
       this.cam.override = { x: Math.cos(this.time * 0.05) * 900, y: Math.sin(this.time * 0.05) * 900, zoom: 0.8 };
@@ -394,15 +495,36 @@ export class Game {
       return;
     }
     this.cam.override = null;
+    if (this.state === 'hangar' || this.state === 'watch') {
+      this._autosave = (this._autosave || 0) + dt;
+      if (this._autosave > 15) { this._autosave = 0; this.persist(); }
+    }
+    if (this.state === 'watch') {
+      const f = this.fighter;
+      this.dev.apply(); this.dev.bar();
+      if (Input.mouse.wheel) this.cam.userZoom = clamp(this.cam.userZoom * (Input.mouse.wheel > 0 ? 0.9 : 1.1), 0.4, 2);
+      let near = 1e9;
+      if (f.world) for (const e of f.world.enemies) if (!e.dead && e.type !== 'missile') near = Math.min(near, Math.hypot(e.x, e.y) - (e.boss ? e.radius * 2 : 0));
+      this.cam.combat = near < 1300 ? clamp(420 / Math.max(420, near), 0.45, 1) : 0.8;
+      // while charging the Cracker, pull back to frame the platform and the planet together
+      const pl = f.planet && f.planet.p;
+      if (!f._cine) {
+        if (pl && !pl.destroyed && f.ship && (f.ship.crackCharge > 0.01 || Input.flight().crack)) {
+          const span = Math.hypot(pl.x, pl.y) + pl.r * 1.6;
+          this.cam.override = { x: pl.x * 0.42, y: pl.y * 0.42, zoom: Math.min(this.W, this.H) / (span * 1.15) };
+        } else this.cam.override = null;
+      }
+      this.cam.follow(f.ship || { x: 0, y: 0, vx: 0, vy: 0, radius: 60 }, dt);
+      return;
+    }
     if (this.state === 'hangar') {
       this.hangar.builder.update(dt);
       this.cam.follow({ x: 0, y: 0, vx: 0, vy: 0, radius: 200 }, dt);
-      this._autosave = (this._autosave || 0) + dt;
       for (const s of this.systems) s.updateDocked && s.updateDocked(dt);
       return;
     }
-    if (this.state !== 'flight' && this.state !== 'cinematic') return;
-    if (this.state === 'flight' && document.querySelector('.modal-back')) return; // dialogs pause flight
+    if (this.state !== 'flight') return;
+    if (document.querySelector('.modal-back')) return; // dialogs pause flight
     const ship = this.ship;
     this.trip.time += dt;
 
@@ -431,10 +553,7 @@ export class Game {
     this.world.update(sdt, ship);
     for (const s of this.systems) s.update && s.update(sdt);
     if (ship.dead && this.dyingT > 0) { this.dyingT -= dt; if (this.dyingT <= 0) { this.finishDeath(); return; } }
-    // pull the camera back when enemies are close so fights stay readable
-    let near = 1e9;
-    for (const e of this.world.enemies) if (!e.dead && e.type !== 'missile') near = Math.min(near, Math.hypot(e.x - ship.x, e.y - ship.y) - (e.boss ? e.radius * 2 : 0));
-    this.cam.combat = near < 900 ? clamp(380 / Math.max(380, near), 0.62, 1) : 1;
+    this.cam.combat = 1;
     this.cam.follow(ship, dt);
     this._autosave = (this._autosave || 0) + dt;
     if (this._autosave > 15) { this._autosave = 0; this.persist(); }
@@ -445,19 +564,22 @@ export class Game {
     this.audio.update(this);
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     this.stars.draw(ctx, this.W, this.H, cam.x, cam.y, cam.zoom);
-    const world = this.state === 'title' ? this.titleWorld : this.world;
+    const watching = this.state === 'watch' || (this.state === 'paused' && this.pausedFrom === 'watch');
+    const f = this.fighter;
+    const world = this.state === 'title' ? this.titleWorld : watching ? f.world : this.world;
     if (!world) return;
+    const ship = watching ? (f.mode === 'deployed' ? f.ship : null) : this.ship;
     ctx.save();
     ctx.setTransform(cam.zoom * this.dpr, 0, 0, cam.zoom * this.dpr, (this.W / 2 - (cam.x + cam.sx) * cam.zoom) * this.dpr, (this.H / 2 - (cam.y + cam.sy) * cam.zoom) * this.dpr);
-    const sys = this.state === 'title' ? [] : this.systems;
+    const sys = this.state === 'title' ? [] : watching ? [f.planetSystem, f.enemySystem] : this.systems;
     for (const s of sys) s.drawBack && s.drawBack(ctx, cam);
     world.draw(ctx, cam, this.time);
-    const flying = (this.state === 'flight' || this.state === 'paused' || this.state === 'cinematic') && this.ship;
+    const flying = (this.state === 'flight' || (this.state === 'paused' && this.pausedFrom === 'flight') || watching) && ship;
     if (flying) {
-      world.drawLasers(ctx, this.ship, this.time);
-      if (!this.ship.dead) drawShip(ctx, this.ship, this.time);
-      world.drawShield(ctx, this.ship, this.time);
-      world.drawMagnet(ctx, this.ship, this.time);
+      world.drawLasers(ctx, ship, this.time);
+      if (!ship.dead) drawShip(ctx, ship, this.time);
+      world.drawShield(ctx, ship, this.time);
+      if (!watching) world.drawMagnet(ctx, ship, this.time);
     }
     for (const s of sys) s.draw && s.draw(ctx, cam);
     world.drawBullets(ctx, cam);
@@ -465,15 +587,43 @@ export class Game {
     world.floaters.draw(ctx, cam.zoom);
     ctx.restore();
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    if (flying && this.state !== 'cinematic') this.drawHud(ctx);
+    if (watching) this.drawFighterHud(ctx);
+    else if (flying) this.drawHud(ctx);
     for (const s of sys) s.hud && s.hud(ctx, this.W, this.H);
+  }
+
+  drawFighterHud(ctx) {
+    const f = this.fighter, sa = { ...this.safe };
+    if (this.touch) sa.t += 12; // clear the watch panel on small screens
+    const x = 16 + sa.l;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.font = '700 22px "Trebuchet MS", sans-serif'; ctx.fillStyle = '#ffd60a';
+    ctx.fillText(money(this.save.credits), x, 32 + sa.t);
+    ctx.font = '700 12px "Trebuchet MS", sans-serif'; ctx.fillStyle = '#ff9fb0';
+    ctx.fillText(`FIGHTER POST · ${SECTORS[f.sectorIndex].name.toUpperCase()}`, x, 50 + sa.t);
+    if (f.mode === 'deployed' && f.ship) {
+      const s = f.ship, rows = [['HULL', f.hull(), f.hull() > f.fs.retreat + 0.2 ? '#2ee6a6' : '#ff5d73', Math.round(f.hull() * 100) + '%'],
+        ['POWER', s.energyMax ? s.energy / s.energyMax : 0, s.powerFactor < 0.9 ? '#ff5d73' : '#ffd60a', Math.floor(s.energy) + ' / ' + s.energyMax]];
+      if (s.shieldMax) rows.push(['SHIELD', s.shield / s.shieldMax, '#6aa8ff', Math.floor(s.shield) + '']);
+      let y = 62 + sa.t;
+      for (const r of rows) { hudBar(ctx, x, y, 190, 15, r[1], r[2], r[0], r[3]); y += 19; }
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#8796bd'; ctx.font = '700 11px "Trebuchet MS", sans-serif';
+      ctx.fillText(`Retreats below ${Math.round(f.fs.retreat * 100)}% hull`, x, y + 10);
+      const rs = this.touch ? Math.min(120, this.H * 0.28) : 150;
+      drawRadar(ctx, f, this.W - 16 - sa.r - rs - (this.touch ? 44 : 0), 16 + sa.t, rs);
+      const pl = f.planet && f.planet.p;
+      if (pl && !pl.destroyed) edgeArrow(ctx, this.cam, pl.x, pl.y, '#ff3cac', pl.name.toUpperCase());
+    } else {
+      ctx.textAlign = 'center'; ctx.font = '700 20px "Trebuchet MS", sans-serif'; ctx.fillStyle = '#7df9ff';
+      ctx.fillText(f.mode === 'repairing' ? `IN THE REPAIR BAY — back in ${Math.ceil(f.repairT)}s` : 'FIGHTER STANDING BY — turn Auto on to deploy', this.W / 2, this.H / 2);
+    }
   }
 
   drawHud(ctx) {
     const ship = this.ship;
     drawFlightHud(ctx, this, this.W, this.H);
     edgeArrow(ctx, this.cam, this.world.station.x, this.world.station.y, '#7df9ff', 'OUTPOST');
-    if (this.planet && this.planet.p && !this.planet.p.destroyed) edgeArrow(ctx, this.cam, this.planet.p.x, this.planet.p.y, '#ff3cac', this.planet.p.name.toUpperCase());
     // top-left: credits + cargo value
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     ctx.font = '700 22px "Trebuchet MS", sans-serif';
@@ -490,7 +640,7 @@ export class Game {
       ctx.fillStyle = `rgba(125,249,255,${0.7 + Math.sin(this.time * 6) * 0.3})`;
       ctx.fillText('[F] DOCK AT OUTPOST', this.W / 2, this.H - 90);
     }
-    if (this.recall > 0) {
+    if (this.recall > 0 && this.state === 'flight') {
       const k = this.recall / 2;
       ctx.fillStyle = 'rgba(10,14,30,0.8)'; ctx.fillRect(this.W / 2 - 120, this.H / 2 + 80, 240, 14);
       ctx.fillStyle = '#7df9ff'; ctx.fillRect(this.W / 2 - 119, this.H / 2 + 81, 238 * k, 12);

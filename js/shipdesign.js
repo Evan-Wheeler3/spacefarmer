@@ -233,19 +233,24 @@ export function analyze(design, levels = {}, opts = {}) {
   const endurance = fwd.burn > 0 ? fuel / fwd.burn : Infinity;
 
   const hasCore = design.hasCore();
+  const role = opts.role || 'freighter';
+  const fighter = role === 'fighter';
+  const wrongRole = design.entries.filter((e) => PARTS[e.part].role !== 'both' && PARTS[e.part].role !== role).length;
+  if (wrongRole) warnings.push({ lvl: 'err', text: `${wrongRole} part(s) belong on the ${fighter ? 'freighter' : 'fighter'}. Remove them.` });
   if (!hasCore) warnings.push({ lvl: 'err', text: 'No Command Core. Someone has to sit somewhere.' });
   const disconnected = design.entries.length - conn.size - (hasCore ? 0 : 0);
   if (hasCore && conn.size < design.entries.length) warnings.push({ lvl: 'err', text: `${design.entries.length - conn.size} part(s) not attached to the core. They will stay behind.` });
   if (wrecked) warnings.push({ lvl: 'err', text: `${wrecked} part(s) are wrecked. Repair at the Market.` });
   if (blockedEx) warnings.push({ lvl: 'err', text: `${blockedEx} thruster(s) have blocked exhaust and won't fire.` });
   if (blockedMz) warnings.push({ lvl: 'warn', text: `${blockedMz} laser/railgun(s) are firing into your own hull. Disabled.` });
-  if (hasCore && fwd.F - rcs <= 0) warnings.push({ lvl: 'err', text: 'No forward-facing thrusters. You will drift with great dignity.' });
-  if (hasCore && imbalance > gyroTorque * 0.95) warnings.push({ lvl: 'err', text: 'Thrust is off-center beyond gyro control. The ship WILL spin.' });
-  else if (hasCore && imbalance > gyroTorque * 0.45) warnings.push({ lvl: 'warn', text: 'Thrust is off-center. Gyros will be busy fighting it.' });
+  if (!fighter && hasCore && fwd.F - rcs <= 0) warnings.push({ lvl: 'err', text: 'No forward-facing thrusters. You will drift with great dignity.' });
+  if (!fighter && hasCore && imbalance > gyroTorque * 0.95) warnings.push({ lvl: 'err', text: 'Thrust is off-center beyond gyro control. The ship WILL spin.' });
+  else if (!fighter && hasCore && imbalance > gyroTorque * 0.45) warnings.push({ lvl: 'warn', text: 'Thrust is off-center. Gyros will be busy fighting it.' });
   if (hasCore && peakDraw > gen && battery / Math.max(0.01, peakDraw - gen) < 12) warnings.push({ lvl: 'warn', text: `Power deficit at full load (${(peakDraw).toFixed(1)} draw vs ${gen.toFixed(1)} gen). Batteries last ${(battery / Math.max(0.01, peakDraw - gen)).toFixed(0)}s.` });
-  if (hasCore && mining <= 0) warnings.push({ lvl: 'warn', text: 'No working mining laser. Rocks will remain unmined and smug.' });
-  if (hasCore && accelLoaded < 45) warnings.push({ lvl: 'warn', text: 'Very sluggish when loaded. Consider more thrust or less mass.' });
-  if (hasCore && back.F - rcs <= 0) warnings.push({ lvl: 'info', text: 'No reverse thrusters: braking uses the weak core RCS.' });
+  if (!fighter && hasCore && mining <= 0) warnings.push({ lvl: 'warn', text: 'No working mining laser. Rocks will remain unmined and smug.' });
+  if (!fighter && hasCore && accelLoaded < 45) warnings.push({ lvl: 'warn', text: 'Very sluggish when loaded. Consider more thrust or less mass.' });
+  if (fighter && hasCore && dps <= 0) warnings.push({ lvl: 'err', text: 'No weapons. The enemy will be delighted.' });
+  if (!fighter && hasCore && back.F - rcs <= 0) warnings.push({ lvl: 'info', text: 'No reverse thrusters: braking uses the weak core RCS.' });
   if (crackers && gen < 20 && battery < 200) warnings.push({ lvl: 'warn', text: 'The Planet Cracker needs serious power: reactors and batteries.' });
 
   return {
@@ -253,7 +258,8 @@ export function analyze(design, levels = {}, opts = {}) {
     thrustFwd: fwd.F, thrustBack: back.F, thrustLeft: left.F, thrustRight: right.F,
     accel, accelLoaded, twr, turnRate, turn90, angAccel, gyroTorque, imbalance, fwdTorque: fwd.T,
     gen, peakDraw, battery, fuel, burn: fwd.burn, endurance, cargo, mining, dps, shield, shieldRegen,
-    magnet: magnet * fx.magnetMult, hp, value, crackers, warnings, bad, conn, thrusters, disconnected,
-    launchable: hasCore && fwd.F - rcs > 0 && !design.entries.some((e) => PARTS[e.part].core && e.hp === 0),
+    magnet: magnet * fx.magnetMult, hp: hp * (role === 'fighter' ? 1 + fx.fortify : 1), value, crackers, warnings, bad, conn, thrusters, disconnected,
+    role,
+    launchable: hasCore && !wrongRole && (fighter || fwd.F - rcs > 0) && !design.entries.some((e) => PARTS[e.part].core && e.hp === 0),
   };
 }

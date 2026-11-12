@@ -111,7 +111,9 @@ export class PlanetSystem {
     const a = -Math.PI / 4 + n * 1.3;
     const r = PLANETS.radius;
     const spr = planetSprite(r, 4242 + n * 17);
-    this.p = { name, x: Math.cos(a) * PLANETS.distance, y: Math.sin(a) * PLANETS.distance, r, sprite: spr, rot: 0, destroyed: false, world: this.world, shake: 0, cracks: null, frags: null };
+    // a fighter post sits just inside Cracker range of the planet
+    const dist = PLANETS.radius + PLANETS.postGap;
+    this.p = { name, x: Math.cos(a) * dist, y: Math.sin(a) * dist, r, sprite: spr, rot: 0, destroyed: false, world: this.world, shake: 0, cracks: null, frags: null };
     // clear rocks out of the planet
     this.world.rocks = this.world.rocks.filter((k) => Math.hypot(k.x - this.p.x, k.y - this.p.y) > r + k.r + 120);
   }
@@ -253,12 +255,11 @@ export class PlanetSystem {
     w.particles.burst(p.x, p.y, 90, '#7a5a48', 500, 6, 16, P_DEBRIS);
     w.particles.burst(p.x, p.y, 40, '#40303a', 200, 5, 90, P_SMOKE);
     w.particles.spawn(P_GLOW, p.x, p.y, 0, 0, 2.5, p.r * 2.2, '#fff1d0');
-    // planet-core loot
-    for (let i = 0; i < PLANETS.coreDrops; i++) {
-      const a = rand(0, TAU), d = rand(0.2, 1) * p.r;
-      w.spawnPickup(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, 'core', rand(30, 160), Math.cos(a), Math.sin(a));
+    // planet-core loot: flung everywhere, then hauled in by salvage crews (paid in reward())
+    for (let i = 0; i < 60; i++) {
+      const a = rand(0, TAU);
+      w.particles.spawn(P_GLOW, p.x + Math.cos(a) * p.r * 0.5, p.y + Math.sin(a) * p.r * 0.5, Math.cos(a) * rand(80, 260), Math.sin(a) * rand(80, 260), 3, 6, ORES.core.glow, 0.3);
     }
-    for (const pk of w.pickups) if (pk.ore === 'core') pk.life = 300;
     // the shockwave settles every argument in the sector
     for (const e of w.enemies) if (!e.dead && Math.hypot(e.x - p.x, e.y - p.y) < 5000) g.enemySystem.damage(e, 1e9, e.x, e.y, true);
     for (const r of w.rocks) {
@@ -271,7 +272,8 @@ export class PlanetSystem {
 
   reward(c) {
     const g = this.game, s = g.save;
-    const amount = planetReward(s.planetsDestroyed, s.upgrades);
+    const salvage = Math.round(PLANETS.coreDrops * ORES.core.value * PLANETS.coreSalvage);
+    const amount = planetReward(s.planetsDestroyed, s.upgrades) + salvage;
     const name = this.p.name;
     s.planetsDestroyed++;
     s.credits += amount;
@@ -288,13 +290,13 @@ export class PlanetSystem {
       el('div', { class: 'reward-big' }, name),
       el('p', {}, lines[s.planetsDestroyed % lines.length]),
       el('div', { class: 'kv' },
-        el('div', {}, el('span', { class: 'dim' }, 'Demolition fee'), el('span', { class: 'money' }, money(amount))),
-        el('div', {}, el('span', { class: 'dim' }, 'Planet Core fragments'), el('span', {}, `${PLANETS.coreDrops} chunks scattered, ${money(ORES.core.value)} each`)),
+        el('div', {}, el('span', { class: 'dim' }, 'Demolition fee'), el('span', { class: 'money' }, money(amount - salvage))),
+        el('div', {}, el('span', { class: 'dim' }, 'Planet Core salvage'), el('span', { class: 'money' }, money(salvage))),
         el('div', {}, el('span', { class: 'dim' }, 'Hull damage sustained'), el('span', {}, Math.round(c.damageTaken * 100) + '%')),
         el('div', {}, el('span', { class: 'dim' }, 'Planets destroyed'), el('span', {}, s.planetsDestroyed)),
         el('div', {}, el('span', { class: 'dim' }, 'Next target pays'), el('span', { class: 'money' }, money(next)))),
-      el('p', { class: 'dim small' }, 'Scoop up the glowing core fragments before they drift off. Another planet will be along the next time you jump in.')),
-      [{ label: 'Collect the loot', cls: 'gold' }]);
+      el('p', { class: 'dim small' }, 'Another planet will be along shortly. Gorvox has a supply problem, in that it has a supply.')),
+      [{ label: 'Excellent', cls: 'gold' }]);
   }
 
   // ------------------------------------------------------------- render

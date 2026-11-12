@@ -53,10 +53,11 @@ export const Input = {
     let strafe = k('KeyE') - k('KeyQ');
     let fire = this.down('Space');
     let crack = this.down('KeyC');
+    let brake = this.down('KeyX');
     const t = this.touchState;
     if (t) {
       thrust = thrust || t.thrust; turn = turn || t.turn; strafe = strafe || t.strafe;
-      fire = fire || t.fire; crack = crack || t.crack;
+      fire = fire || t.fire; crack = crack || t.crack; brake = brake || t.brake;
     }
     if (this.pad) {
       thrust = thrust || -this.padAxis(1);
@@ -64,8 +65,11 @@ export const Input = {
       strafe = strafe || (this.padBtn(5) ? 1 : 0) - (this.padBtn(4) ? 1 : 0);
       fire = fire || this.padTrig(7) > 0.3 || this.padBtn(0);
       crack = crack || this.padBtn(3);
+      brake = brake || this.padTrig(6) > 0.3;
     }
-    return { thrust, turn, strafe, fire, crack };
+    // braking overrides the stick so you can hold it while still pointing
+    if (brake) { thrust = 0; strafe = 0; }
+    return { thrust, turn, strafe, fire, crack, brake };
   },
 
   endFrame() {

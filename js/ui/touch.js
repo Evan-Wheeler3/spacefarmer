@@ -16,7 +16,7 @@ export class TouchControls {
     this.game = game;
     this.on = isTouchDevice();
     this.stick = null;       // { id, x0, y0, dx, dy }
-    Input.touchState = { thrust: 0, turn: 0, strafe: 0, fire: false, crack: false, recall: false };
+    Input.touchState = { thrust: 0, turn: 0, strafe: 0, fire: false, crack: false, recall: false, brake: false };
     if (!this.on) return;
     document.body.classList.add('touch');
     game.touch = true;
@@ -42,8 +42,9 @@ export class TouchControls {
     this.base = el('div', { class: 'tc-base' }, el('div', { class: 'tc-knob' }));
     this.fire = hold('FIRE', 'tc-fire', 'fire');
     this.crack = hold('CRACK', 'tc-crack', 'crack');
-    this.strafeL = el('div', { class: 'tc-btn tc-small' }, '◀');
-    this.strafeR = el('div', { class: 'tc-btn tc-small' }, '▶');
+    this.strafeL = el('div', { class: 'tc-btn tc-small tc-strafe' }, '⇠', el('small', {}, 'SLIDE'));
+    this.strafeR = el('div', { class: 'tc-btn tc-small tc-strafe' }, '⇢', el('small', {}, 'SLIDE'));
+    this.brake = hold('BRAKE', 'tc-brake', 'brake');
     for (const [b, v] of [[this.strafeL, -1], [this.strafeR, 1]]) {
       b.addEventListener('pointerdown', (e) => { e.preventDefault(); Input.touchState.strafe = v; b.classList.add('down'); });
       for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(ev, () => { if (Input.touchState.strafe === v) Input.touchState.strafe = 0; b.classList.remove('down'); });
@@ -53,7 +54,7 @@ export class TouchControls {
       tap('❚❚', 'tc-small', () => { if (g.state === 'flight') g.pause(); }),
       hold('⟲', 'tc-small tc-recall', 'recall'),
       tap('A', 'tc-small tc-assist', () => { if (g.ship) { g.ship.assist = !g.ship.assist; } }));
-    this.right = el('div', { class: 'tc-right' }, el('div', { class: 'tc-row' }, this.strafeL, this.strafeR), this.crack, this.fire);
+    this.right = el('div', { class: 'tc-right' }, el('div', { class: 'tc-row' }, this.strafeL, this.strafeR), this.crack, el('div', { class: 'tc-row tc-bottom' }, this.brake, this.fire));
     this.root = el('div', { class: 'tc hidden' }, this.zone, this.base, this.right, this.side, this.dock);
     g.ui.append(this.root);
 

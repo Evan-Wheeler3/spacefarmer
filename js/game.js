@@ -57,6 +57,7 @@ export class Game {
     this.stars = new Starfield(SECTORS[this.save ? this.save.sector : 0].bg, 7);
     Input.init(canvas);
     addEventListener('resize', () => this.resize());
+    addEventListener('orientationchange', () => setTimeout(() => this.resize(), 300));
     addEventListener('beforeunload', () => this.persist());
     document.addEventListener('visibilitychange', () => { if (document.hidden) this.persist(); });
     addEventListener('keydown', (e) => this.onKey(e));
@@ -72,6 +73,19 @@ export class Game {
     this.canvas.width = Math.floor(this.W * dpr);
     this.canvas.height = Math.floor(this.H * dpr);
     this.cam.resize(this.W, this.H);
+    this.readSafeArea();
+  }
+
+  // iOS notch / Dynamic Island insets, read from CSS env() via a probe element
+  readSafeArea() {
+    if (!this._probe) {
+      this._probe = document.createElement('div');
+      this._probe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);';
+      document.body.append(this._probe);
+    }
+    const cs = getComputedStyle(this._probe);
+    this.safe = { t: parseFloat(cs.paddingTop) || 0, r: parseFloat(cs.paddingRight) || 0, b: parseFloat(cs.paddingBottom) || 0, l: parseFloat(cs.paddingLeft) || 0 };
+    this.cam.safeX = Math.max(this.safe.l, this.safe.r);
   }
 
   shake(a) { this.cam.shake(a * (this.settings.shake ?? 1)); }
@@ -463,11 +477,11 @@ export class Game {
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     ctx.font = '700 22px "Trebuchet MS", sans-serif';
     ctx.fillStyle = '#ffd60a';
-    ctx.fillText(money(this.save.credits), 16, 32);
+    ctx.fillText(money(this.save.credits), 16 + this.safe.l, 32 + this.safe.t);
     ctx.font = '700 12px "Trebuchet MS", sans-serif';
     ctx.fillStyle = '#8796bd';
     const cv = sellValue(ship.cargo, this.save.upgrades);
-    ctx.fillText(`${SECTORS[this.save.sector].name.toUpperCase()} · cargo worth ${money(cv)}`, 16, 50);
+    ctx.fillText(`${SECTORS[this.save.sector].name.toUpperCase()} · cargo worth ${money(cv)}`, 16 + this.safe.l, 50 + this.safe.t);
     // centre prompts
     ctx.textAlign = 'center';
     if (this.canDock && !this.touch) {

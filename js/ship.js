@@ -203,6 +203,12 @@ export class Ship {
       }
     }
 
+    // ---- brake: every thruster against the drift at full strength (works with assist off too)
+    if (inp.brake) {
+      const sp = Math.hypot(lvx, lvy);
+      if (sp > 2) { const k = Math.min(1, sp / 30); ux = (-lvx / sp) * k; uy = (-lvy / sp) * k; } else { ux = 0; uy = 0; }
+    }
+
     // ---- thrusters
     let Fx = 0, Fy = 0, T = 0, burn = 0;
     const hasFuel = this.fuel > 0;
@@ -240,10 +246,10 @@ export class Ship {
       if (p.def.powerUse) { gyroAvail += p.def.torque * pf; gyroPower += p.def.powerUse; } else gyroAvail += p.def.torque;
     }
     let Tg = 0;
-    if (Math.abs(inp.turn) > 0.05 || this.assist) {
-      const target = inp.turn * PHYS.maxTurnRate;
+    if (Math.abs(inp.turn) > 0.05 || this.assist || inp.brake) {
+      const target = inp.brake ? 0 : inp.turn * PHYS.maxTurnRate;
       // feed-forward against thrust torque, plus P-control toward target spin
-      const want = (target - this.av) * this.inertia * PHYS.assistGain - (this.assist ? T : 0);
+      const want = (target - this.av) * this.inertia * PHYS.assistGain - (this.assist || inp.brake ? T : 0);
       Tg = clamp(want, -gyroAvail, gyroAvail);
     }
     const gyroLoad = gyroAvail > 0 ? Math.abs(Tg) / gyroAvail : 0;

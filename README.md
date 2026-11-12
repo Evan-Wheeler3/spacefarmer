@@ -52,6 +52,7 @@ drawn procedurally and all audio is synthesized with WebAudio.
 | W / S | thrust forward / reverse | Left click / drag | place part (drag paints) |
 | A / D | rotate | Right click / drag | remove part |
 | Q / E | strafe | R or mouse wheel | rotate part |
+| X (hold) | brake: all thrusters against your drift, kills spin | | |
 | G | start the next combat contract | | |
 | Space | fire mining lasers and railguns (turrets aim and fire themselves) | M | mirror mode |
 | F | dock (near the outpost, moving slowly) | Middle click | pick up a placed part's type |
@@ -65,7 +66,7 @@ drawn procedurally and all audio is synthesized with WebAudio.
 | F3 | physics telemetry | | |
 | Esc | pause | | |
 
-**Gamepad:** left stick thrust, right stick turn, RT or A fire, LB/RB strafe, X start contract, Y charge the cracker, B dock.
+**Gamepad:** left stick thrust, right stick turn, RT or A fire, LT brake, LB/RB strafe, X start contract, Y charge the cracker, B dock.
 
 ## The loop
 
@@ -100,7 +101,8 @@ folder on any static host (GitHub Pages, Netlify, Vercel); no build step is need
 |---|---|
 | Left thumb, drag anywhere on the left half | point-to-fly: the ship turns toward the stick and thrusts when facing it |
 | FIRE (hold) | mining lasers and railguns |
-| ◀ ▶ | strafe |
+| ⇠ ⇢ SLIDE | strafe sideways without turning |
+| BRAKE (hold) | fire every thruster against your drift and stop spinning |
 | DOCK | appears near the outpost |
 | ⟲ (hold) | recall to the outpost |
 | ❚❚ / A | pause / flight assist on-off |

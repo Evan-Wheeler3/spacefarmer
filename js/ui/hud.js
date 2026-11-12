@@ -22,12 +22,14 @@ function bar(ctx, x, y, w, h, frac, col, label, value) {
 export function drawFlightHud(ctx, game, W, H) {
   const ship = game.ship;
   if (!ship) return;
-  const pad = 16;
+  // keep clear of notches / the Dynamic Island (safe-area insets, CSS px)
+  const sa = game.safe || { t: 0, r: 0, b: 0, l: 0 };
+  const pad = 16 + sa.l, padR = 16 + sa.r;
 
   // ---- status bars (bottom-left)
   const touch = !!game.touch;
   const bw = touch ? 170 : 230, bh = touch ? 14 : 17;
-  let y = H - pad - bh;
+  let y = H - 16 - sa.b - bh;
   const hullFrac = 1 - ship.damageFraction();
   const rows = [
     ['HULL', hullFrac, hullFrac > 0.5 ? '#2ee6a6' : hullFrac > 0.25 ? '#ffcf5a' : '#ff5d73', Math.round(hullFrac * 100) + '%'],
@@ -38,7 +40,7 @@ export function drawFlightHud(ctx, game, W, H) {
   if (ship.shieldMax > 0) rows.push(['SHIELD', ship.shield / ship.shieldMax, '#6aa8ff', Math.floor(ship.shield) + '']);
   if (touch) {
     // thumbs live at the bottom on phones: stack the bars under the credits instead
-    y = 62;
+    y = 62 + sa.t;
     for (const r of rows) { bar(ctx, pad, y, bw, bh, r[1], r[2], r[0], r[3]); y += bh + 4; }
     y += 14;
   } else for (const r of rows) { bar(ctx, pad, y, bw, bh, r[1], r[2], r[0], r[3]); y -= bh + 5; }
@@ -47,11 +49,11 @@ export function drawFlightHud(ctx, game, W, H) {
   else if (ship.cargoUnits >= ship.cargoMax - 0.01 && ship.cargoMax > 0) warnText(ctx, pad, y - 6, 'CARGO FULL — dock at the outpost to sell', game.time, '#ffcf5a');
 
   // ---- damage diagram (bottom-left, right of bars)
-  if (!touch) drawDamageDiagram(ctx, ship, pad + bw + 14, H - pad - 110, 110, 110);
+  if (!touch) drawDamageDiagram(ctx, ship, pad + bw + 14, H - 16 - sa.b - 110, 110, 110);
 
   // ---- radar (top-right)
   const rs = touch ? Math.min(120, H * 0.28) : 170;
-  drawRadar(ctx, game, W - pad - rs - (touch ? 40 : 0), pad, rs);
+  drawRadar(ctx, game, W - padR - rs - (touch ? 44 : 0), 16 + sa.t, rs);
 
   // ---- telemetry (bottom-right)
   if (game.settings.telemetry) {
@@ -66,8 +68,8 @@ export function drawFlightHud(ctx, game, W, H) {
       ['ASSIST [T]', ship.assist ? 'ON' : 'OFF'],
     ];
     ctx.font = '700 11px "Trebuchet MS", sans-serif';
-    const tx = W - pad - 200;
-    let ty = H - pad - lines.length * 16;
+    const tx = W - padR - 200;
+    let ty = H - 16 - sa.b - lines.length * 16;
     ctx.fillStyle = 'rgba(10,14,30,0.65)';
     ctx.fillRect(tx - 8, ty - 12, 208, lines.length * 16 + 8);
     for (const [k, v] of lines) {
@@ -143,7 +145,7 @@ export function drawRadar(ctx, game, x, y, size) {
 // Arrow on the screen edge pointing at an off-screen world position
 export function edgeArrow(ctx, cam, wx, wy, col, label) {
   const [sx, sy] = cam.toScreen(wx, wy);
-  const W = cam.w, H = cam.h, m = 40;
+  const W = cam.w, H = cam.h, m = 40 + Math.max(cam.safeX || 0, 0);
   if (sx > m && sx < W - m && sy > m && sy < H - m) return;
   const cx = W / 2, cy = H / 2;
   const a = Math.atan2(sy - cy, sx - cx);

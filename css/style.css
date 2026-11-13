@@ -337,3 +337,5 @@ body.watching .chips { top: calc(52px + env(safe-area-inset-top)); }
 .planet-card .big-pct { font-size: 44px; font-weight: 900; color: #ffd27a; text-shadow: 0 0 18px rgba(255,60,172,0.4); }
 .s-bar.big { height: 10px; margin: 8px 0 12px; }
 @media (max-height: 520px) { .pause h1 { margin: 4px 0; } .pause-col { min-width: 220px; gap: 6px; } .pause .big-btn { padding: 7px 14px; font-size: 14px; } .planet-card .big-pct { font-size: 32px; } }
+.skins { margin-top: 10px; }
+.skin-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }

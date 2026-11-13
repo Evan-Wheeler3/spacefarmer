@@ -6,7 +6,7 @@ import { Camera } from './camera.js';
 import { World } from './world.js';
 import { Ship } from './ship.js';
 import { Design, analyze } from './shipdesign.js';
-import { Starfield, drawShip } from './render.js';
+import { Starfield, drawShip, SKINS } from './render.js';
 import { drawFlightHud, edgeArrow } from './ui/hud.js';
 import { Hangar } from './ui/hangar.js';
 import { el, toast, modal } from './ui/dom.js';
@@ -501,6 +501,22 @@ export class Game {
     this.audio && this.audio.duck(false);
   }
 
+  // pick the in-flight hull skin (the Shipyard always shows blocks)
+  skinPicker() {
+    const wrap = el('div', { class: 'skins' }, el('div', { class: 'dim small' }, 'Ship skin'));
+    const row = el('div', { class: 'skin-row' });
+    for (const [id, sk] of Object.entries(SKINS)) {
+      const b = el('button', { class: 'btn small' + (this.settings.skin === id ? ' on' : ''), onclick: () => {
+        this.settings.skin = id; this.applySettings();
+        for (const x of row.children) x.classList.toggle('on', x === b);
+      } }, sk.name);
+      if (sk.hull) b.style.borderLeft = `6px solid ${sk.hull}`;
+      row.append(b);
+    }
+    wrap.append(row);
+    return wrap;
+  }
+
   pauseMenu() {
     const set = this.settings;
     const slider = (label, key, min, max, step) => el('label', { class: 'set' }, el('span', {}, label),
@@ -519,7 +535,7 @@ export class Game {
         el('div', { class: 'pause-col card' }, el('h3', {}, 'Settings'),
           slider('Master volume', 'volume', 0, 1, 0.05), slider('Music', 'music', 0, 1, 0.05), slider('Screen shake', 'shake', 0, 1.5, 0.1),
           check('Physics telemetry (F3)', 'telemetry'),
-          this.skinPicker ? this.skinPicker() : '')),
+          this.skinPicker())),
       el('div', { class: 'dim' }, 'Progress autosaves continuously.'));
     return p;
   }

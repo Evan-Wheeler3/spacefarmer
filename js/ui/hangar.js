@@ -162,6 +162,7 @@ export class Hangar {
       el('div', { class: 'card' }, el('h3', {}, 'Settings'),
         slider('Master volume', 'volume', 0, 1, 0.05), slider('Music', 'music', 0, 1, 0.05), slider('Screen shake', 'shake', 0, 1.5, 0.1),
         check('Physics telemetry (F3)', 'telemetry'),
+        this.game.skinPicker(),
         el('div', { class: 'bp-row' },
           el('button', { class: 'btn small', onclick: () => { s.tutorial = { step: 0, done: false }; this.game.persist(); toast('Tutorial will replay on next launch', 'good'); } }, 'Replay tutorial'),
           el('button', { class: 'btn small danger', onclick: () => { if (confirm('Erase all progress? This cannot be undone.')) this.game.wipe(); } }, 'Erase save'))),

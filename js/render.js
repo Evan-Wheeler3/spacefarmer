@@ -224,11 +224,146 @@ export function shipSprite(ship) {
   return cv;
 }
 
+// ---------------------------------------------------------------------
+// Hull skins: in flight the block layout is wrapped in a real ship hull.
+// Physics never changes; only the look. The builder always shows blocks.
+// ---------------------------------------------------------------------
+export const SKINS = {
+  industrial: { name: 'Industrial', hull: '#9aa0a8', mid: '#6b7079', dark: '#353a42', accent: '#f2b705', glass: '#9fe8ff', stripe: true },
+  military:   { name: 'Military',   hull: '#6f7a5e', mid: '#4f5843', dark: '#262b20', accent: '#d4b062', glass: '#a8f0c0' },
+  sleek:      { name: 'Sleek',      hull: '#e4e8ee', mid: '#aeb7c4', dark: '#5f6a7c', accent: '#2f8cff', glass: '#7fd3ff' },
+  salvage:    { name: 'Salvage',    hull: '#9a6a48', mid: '#6e4a33', dark: '#33231a', accent: '#c9d36a', glass: '#ffd38a', stripe: true },
+  blocks:     { name: 'Blocks (builder look)' },
+};
+
+function skinSprite(ship, skinId) {
+  const key = skinId + ':' + ship.version;
+  if (ship._skin && ship._skinKey === key) return ship._skin;
+  const sk = SKINS[skinId];
+  const SC = 2, C = PHYS.CELL, S = C * SC;
+  const occ = new Map();
+  let minx = 1e9, miny = 1e9, maxx = -1e9, maxy = -1e9;
+  for (const p of ship.parts) {
+    if (!p.alive) continue;
+    for (const [x, y] of entryCells(p.entry)) {
+      occ.set(x + ',' + y, p);
+      minx = Math.min(minx, x); maxx = Math.max(maxx, x); miny = Math.min(miny, y); maxy = Math.max(maxy, y);
+    }
+  }
+  if (!occ.size) { minx = maxx = miny = maxy = 0; }
+  const pad = 1.4; // room for engine bells and barrels that stick out
+  const cv = ship._skin || document.createElement('canvas');
+  cv.width = Math.ceil((maxx - minx + 1 + pad * 2) * S); cv.height = Math.ceil((maxy - miny + 1 + pad * 2) * S);
+  const g = cv.getContext('2d');
+  g.clearRect(0, 0, cv.width, cv.height);
+  const ox = (-minx + pad) * S + S / 2, oy = (-miny + pad) * S + S / 2; // centre of cell (0,0)
+  const has = (x, y) => occ.has(x + ',' + y);
+  const cut = S * 0.42;
+  // hull silhouette: every cell, with exposed outer corners chamfered off
+  const hullPath = () => {
+    g.beginPath();
+    for (const k of occ.keys()) {
+      const [x, y] = k.split(',').map(Number);
+      const l = ox + x * S - S / 2 - 0.6, t = oy + y * S - S / 2 - 0.6, r = l + S + 1.2, b = t + S + 1.2;
+      const u = has(x, y - 1), d = has(x, y + 1), lf = has(x - 1, y), rt = has(x + 1, y);
+      const tl = !u && !lf ? cut : 0, tr = !u && !rt ? cut : 0, br = !d && !rt ? cut * 0.6 : 0, bl = !d && !lf ? cut * 0.6 : 0;
+      g.moveTo(l + tl, t); g.lineTo(r - tr, t); g.lineTo(r, t + tr); g.lineTo(r, b - br); g.lineTo(r - br, b); g.lineTo(l + bl, b); g.lineTo(l, b - bl); g.lineTo(l, t + tl); g.closePath();
+    }
+  };
+  // engine bells and barrels go under the hull edge
+  for (const p of ship.parts) {
+    if (!p.alive) continue;
+    const cx = ox + p.gx * S, cy = oy + p.gy * S, [dx, dy] = p.dir;
+    const len = (p.h * S) / 2;
+    if (p.def.thrust && !p.blocked) {
+      const big = p.id === 'heavyThruster';
+      const bx = cx - dx * len, by = cy - dy * len;
+      const w0 = S * (big ? 0.34 : 0.24), w1 = S * (big ? 0.5 : 0.36), L = S * (big ? 0.7 : 0.5);
+      const px = -dy, py = dx;
+      g.fillStyle = '#23262c';
+      g.beginPath(); g.moveTo(bx + px * w0, by + py * w0); g.lineTo(bx - dx * L + px * w1, by - dy * L + py * w1); g.lineTo(bx - dx * L - px * w1, by - dy * L - py * w1); g.lineTo(bx - px * w0, by - py * w0); g.closePath(); g.fill();
+      g.strokeStyle = sk.mid; g.lineWidth = 1.5; g.stroke();
+      g.fillStyle = '#ff8a3c'; g.globalAlpha = 0.55;
+      g.beginPath(); g.ellipse(bx - dx * L * 0.92, by - dy * L * 0.92, w1 * (dx ? 0.25 : 0.85), w1 * (dy ? 0.25 : 0.85), 0, 0, TAU); g.fill();
+      g.globalAlpha = 1;
+    }
+    if (p.def.muzzle && !p.blocked) {
+      const tx = cx + dx * len, ty = cy + dy * len;
+      const L = S * (p.id === 'deepBore' ? 0.7 : 0.45), w = S * (p.def.weapon ? 0.1 : 0.12);
+      g.strokeStyle = '#2b2f36'; g.lineWidth = w * 2; g.lineCap = 'round';
+      if (p.def.weapon) { // railgun: twin rails
+        for (const o of [-1, 1]) { g.beginPath(); g.moveTo(tx - dy * o * S * 0.18, ty + dx * o * S * 0.18); g.lineTo(tx + dx * L - dy * o * S * 0.18, ty + dy * L + dx * o * S * 0.18); g.stroke(); }
+      } else { g.beginPath(); g.moveTo(tx, ty); g.lineTo(tx + dx * L, ty + dy * L); g.stroke(); }
+      g.lineCap = 'butt';
+      const tip = p.def.beam ? `rgb(${p.def.beam})` : p.def.weapon ? '#b8f3ff' : '#2ee6a6';
+      g.fillStyle = tip; g.beginPath(); g.arc(tx + dx * L, ty + dy * L, w * 1.3, 0, TAU); g.fill();
+    }
+  }
+  // plating
+  hullPath();
+  const grd = g.createLinearGradient(0, 0, cv.width, cv.height);
+  grd.addColorStop(0, sk.hull); grd.addColorStop(0.55, sk.mid); grd.addColorStop(1, sk.dark);
+  g.fillStyle = grd; g.fill();
+  g.save(); hullPath(); g.clip();
+  // panel seams, rivets, part details
+  g.strokeStyle = 'rgba(0,0,0,0.22)'; g.lineWidth = 1;
+  for (const [k, p] of occ) {
+    const [x, y] = k.split(',').map(Number);
+    const l = ox + x * S - S / 2, t = oy + y * S - S / 2;
+    if (!has(x + 1, y) || occ.get((x + 1) + ',' + y) !== p) { g.beginPath(); g.moveTo(l + S, t); g.lineTo(l + S, t + S); g.stroke(); }
+    if (!has(x, y + 1) || occ.get(x + ',' + (y + 1)) !== p) { g.beginPath(); g.moveTo(l, t + S); g.lineTo(l + S, t + S); g.stroke(); }
+  }
+  for (const p of ship.parts) {
+    if (!p.alive) continue;
+    const cx = ox + p.gx * S, cy = oy + p.gy * S, W = p.w * S, H = p.h * S;
+    const id = p.id;
+    g.save(); g.translate(cx, cy); g.rotate(p.rot * Math.PI / 2);
+    const pw = p.def.w * S, ph = p.def.h * S;
+    if (id === 'armor') { g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(-pw * 0.42, -ph * 0.42, pw * 0.84, ph * 0.84); g.strokeStyle = 'rgba(255,255,255,0.18)'; g.strokeRect(-pw * 0.36, -ph * 0.36, pw * 0.72, ph * 0.72); }
+    else if (id === 'cargo') { g.fillStyle = 'rgba(0,0,0,0.2)'; g.fillRect(-pw * 0.38, -ph * 0.38, pw * 0.76, ph * 0.76); g.fillStyle = sk.accent; g.globalAlpha = 0.55; for (let k = -1; k <= 1; k++) g.fillRect(-pw * 0.34, k * ph * 0.2 - 1, pw * 0.68, 2); g.globalAlpha = 1; }
+    else if (id === 'fuelTank') { g.fillStyle = 'rgba(255,255,255,0.12)'; g.beginPath(); g.ellipse(0, 0, pw * 0.3, ph * 0.4, 0, 0, TAU); g.fill(); g.strokeStyle = 'rgba(0,0,0,0.35)'; g.stroke(); }
+    else if (id === 'reactor' || id === 'fusion') { const r = Math.min(pw, ph) * 0.26; const gg = g.createRadialGradient(0, 0, 0, 0, 0, r); gg.addColorStop(0, '#fffbe0'); gg.addColorStop(0.5, id === 'fusion' ? '#7df9ff' : '#ffd60a'); gg.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gg; g.beginPath(); g.arc(0, 0, r * 1.3, 0, TAU); g.fill(); g.strokeStyle = 'rgba(0,0,0,0.4)'; for (let k = -2; k <= 2; k++) { g.beginPath(); g.moveTo(-r, k * r * 0.35); g.lineTo(r, k * r * 0.35); g.stroke(); } }
+    else if (id === 'battery') { g.fillStyle = '#2ee6a6'; g.globalAlpha = 0.6; for (let k = 0; k < 3; k++) g.fillRect(-pw * 0.25, -ph * 0.25 + k * ph * 0.2, pw * 0.5, ph * 0.1); g.globalAlpha = 1; }
+    else if (id === 'shield') { g.fillStyle = 'rgba(106,168,255,0.55)'; g.beginPath(); g.arc(0, 0, pw * 0.28, 0, TAU); g.fill(); g.strokeStyle = '#cfe0ff'; g.stroke(); }
+    else if (id === 'gyro') { g.strokeStyle = 'rgba(0,0,0,0.4)'; g.lineWidth = 2; g.beginPath(); g.arc(0, 0, pw * 0.25, 0, TAU); g.stroke(); }
+    else if (id === 'turret') { g.fillStyle = sk.dark; g.beginPath(); g.arc(0, 0, pw * 0.36, 0, TAU); g.fill(); g.strokeStyle = sk.accent; g.lineWidth = 1.5; g.stroke(); }
+    else if (id === 'tractor') { g.strokeStyle = '#2ee6a6'; g.globalAlpha = 0.6; for (let k = 1; k <= 2; k++) { g.beginPath(); g.arc(0, 0, k * pw * 0.14, 0, TAU); g.stroke(); } g.globalAlpha = 1; }
+    else if (p.def.mining) { g.fillStyle = 'rgba(0,0,0,0.3)'; g.fillRect(-pw * 0.18, -ph * 0.45, pw * 0.36, ph * 0.6); }
+    if (p.hp / p.maxHp < 0.6) { g.fillStyle = 'rgba(20,10,5,0.45)'; g.beginPath(); g.arc(pw * 0.1, -ph * 0.1, pw * 0.3, 0, TAU); g.fill(); }
+    g.restore();
+  }
+  // accent stripe along the hull's forward edge
+  if (sk.stripe) {
+    g.fillStyle = sk.accent; g.globalAlpha = 0.8;
+    for (const k of occ.keys()) { const [x, y] = k.split(',').map(Number); if (!has(x, y - 1)) g.fillRect(ox + x * S - S / 2, oy + y * S - S / 2 + S * 0.18, S, S * 0.09); }
+    g.globalAlpha = 1;
+  }
+  // light from the upper left, shade below
+  const sh = g.createLinearGradient(0, 0, 0, cv.height);
+  sh.addColorStop(0, 'rgba(255,255,255,0.14)'); sh.addColorStop(1, 'rgba(0,0,0,0.3)');
+  g.fillStyle = sh; g.fillRect(0, 0, cv.width, cv.height);
+  g.restore();
+  hullPath(); g.strokeStyle = '#14171c'; g.lineWidth = 2; g.stroke();
+  // cockpit canopy at the command core
+  const core = ship.parts.find((p) => p.alive && p.def.core);
+  if (core) {
+    const cx = ox + core.gx * S, cy = oy + core.gy * S;
+    const cg = g.createLinearGradient(cx, cy - S * 0.3, cx, cy + S * 0.3);
+    cg.addColorStop(0, '#ffffff'); cg.addColorStop(0.35, sk.glass); cg.addColorStop(1, '#1d3a50');
+    g.fillStyle = cg; g.beginPath(); g.ellipse(cx, cy - S * 0.05, S * 0.24, S * 0.34, 0, 0, TAU); g.fill();
+    g.strokeStyle = '#14171c'; g.lineWidth = 1.5; g.stroke();
+  }
+  ship._skin = cv; ship._skinKey = key;
+  ship._skinOff = { x: ox / SC - (0) , y: oy / SC, scale: SC };
+  return cv;
+}
+
 // Draw a ship in world space (ctx already in camera transform)
 export function drawShip(ctx, ship, time, skin = null) {
   const C = PHYS.CELL;
-  const spr = shipSprite(ship);
-  const off = ship._spriteOff;
+  const skinned = skin && skin !== 'blocks' && SKINS[skin];
+  const spr = skinned ? skinSprite(ship, skin) : shipSprite(ship);
+  const off = skinned ? ship._skinOff : ship._spriteOff;
   ctx.save();
   ctx.translate(ship.x, ship.y);
   ctx.rotate(ship.angle);

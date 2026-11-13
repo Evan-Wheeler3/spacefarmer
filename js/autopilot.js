@@ -10,10 +10,12 @@ export class Autopilot {
     this.mode = 'mine';
     this.theta = null;      // mining angle around the planet
     this.target = null;
-    this.banned = new Map();  // cube -> time it was given up on (couldn't reach it)
+    this.bans = [];  // { x, y, t }: spots given up on (wedged, unreachable); avoided for a while
     this.targetT = 0;
   }
-  reset() { this.mode = 'mine'; this.target = null; this.banned.clear(); }
+  ban(p, t) { this.bans.push({ x: p.x, y: p.y, t, r: Math.max(140, (this.game.ship?.radius || 60) * 2.5) }); if (this.bans.length > 24) this.bans.shift(); }
+  isBanned(x, y) { for (const b of this.bans) if ((b.x - x) ** 2 + (b.y - y) ** 2 < b.r * b.r) return true; return false; }
+  reset() { this.mode = 'mine'; this.target = null; this.bans = []; }
 
   steer(ship, tx, ty, stop, face = null) {
     const dx = tx - ship.x, dy = ty - ship.y;
@@ -42,46 +44,74 @@ export class Autopilot {
     return t;
   }
 
-  // choose where to dig. Near rock: cast a fan of rays from the ship; whatever
-  // they hit is in plain view, so the ship can always fly straight at it.
-  // Prefer shallow cubes near home that our tools can cut, so the dig widens
-  // into a bowl and peels the planet layer by layer. Far from rock (or when
-  // somewhere else is clearly better), use a coarse scan of the whole surface.
+  // choose where to dig: only cubes open to the sky (the first cube a ray from
+  // space hits), so the dig is always a crater, never a cave, and the way in
+  // from straight above is clear. Prefer shallow cubes near home that our tools
+  // can cut; skip crevices too narrow for the ship. A small window around the
+  // current spot is checked every time; the whole planet every few seconds.
   pickTarget(ship, world) {
     const pl = world.planet;
     const home = Math.atan2(world.station.y, world.station.x);
+    if (this.theta == null) this.theta = home;
     const tier = this.bestTier(ship);
-    const value = (x, y, m) => {
-      let sc = Math.hypot(x, y) - Math.abs(angleDiff(home, Math.atan2(y, x))) * pl.R * 0.2;
-      if (ORES[m].tier > tier) sc -= pl.R * 4; // can't cut it properly yet: anything cuttable, anywhere, comes first
-      return sc;
+    const evalAt = (a) => {
+      const sfc = pl.surfaceAt(a);
+      if (!sfc || this.isBanned(sfc.x, sfc.y)) return null;
+      const r = Math.hypot(sfc.x, sfc.y);
+      let sc = r - Math.abs(angleDiff(home, a)) * pl.R * 0.2;
+      if (ORES[pl.matName(pl.matAt(sfc.i, sfc.j))].tier > tier) sc -= pl.R * 4; // anything cuttable, anywhere, comes first
+      // too narrow to fit? (both sides rise well above it within the ship's half-width)
+      const hw = (ship.radius * 1.1) / Math.max(r, 150);
+      const L = pl.surfaceAt(a - hw), Rt = pl.surfaceAt(a + hw);
+      const rise = Math.min(L ? Math.hypot(L.x, L.y) - r : 0, Rt ? Math.hypot(Rt.x, Rt.y) - r : 0);
+      if (rise > ship.radius * 0.5) sc -= pl.R * 0.8;
+      return { i: sfc.i, j: sfc.j, x: sfc.x, y: sfc.y, a, sc, dir: [-Math.cos(a), -Math.sin(a)] };
     };
-    let best = null, bs = -1e18;
-    const reach = 520, N = 56;
-    for (let q = 0; q < N; q++) {
-      const a = (q / N) * TAU, dx = Math.cos(a), dy = Math.sin(a);
-      const hit = pl.raycast(ship.x, ship.y, dx, dy, reach);
-      if (!hit || hit.t === 0 || this.banned.has(hit.i * 65536 + hit.j)) continue;
-      const [x, y] = pl.centerOf(hit.i, hit.j);
-      const sc = value(x, y, pl.matName(pl.matAt(hit.i, hit.j))) - hit.t * 0.15;
-      if (sc > bs) { bs = sc; best = { i: hit.i, j: hit.j, x, y, dir: [dx, dy] }; }
+    let best = null;
+    const step = pl.cell / pl.R;
+    for (let k = -8; k <= 8; k++) {
+      const c = evalAt(this.theta + k * step);
+      if (c && (!best || c.sc - Math.abs(k) * 2 > best.sc)) best = c;
     }
     const now = world.time;
-    if (!this.scan || now - this.scanT > 4 || this.scanTier !== tier || bs < -pl.R * 2) {
+    if (!this.scan || now - this.scanT > 4 || this.scanTier !== tier || !best || best.sc < -pl.R * 0.5) {
       this.scanT = now; this.scanTier = tier; this.scan = null;
-      let sb = -1e18;
-      const n = 120;
-      for (let q = 0; q < n; q++) {
-        const a = home + (q / n) * TAU;
-        const sfc = pl.surfaceAt(a);
-        if (!sfc || this.banned.has(sfc.i * 65536 + sfc.j)) continue;
-        const sc = value(sfc.x, sfc.y, pl.matName(pl.matAt(sfc.i, sfc.j)));
-        if (sc > sb) { sb = sc; this.scan = { i: sfc.i, j: sfc.j, x: sfc.x, y: sfc.y, dir: null, sc }; }
+      for (let q = 0; q < 120; q++) {
+        const c = evalAt(home + (q / 120) * TAU);
+        if (c && (!this.scan || c.sc > this.scan.sc)) this.scan = c;
       }
     }
-    if (this.scan && pl.matAt(this.scan.i, this.scan.j) && (!best || this.scan.sc > bs + pl.cell * 10)) { best = this.scan; this.scan = null; }
+    if (this.scan && pl.matAt(this.scan.i, this.scan.j) && (!best || this.scan.sc > best.sc + pl.cell * 10)) { best = this.scan; this.scan = null; }
+    // nothing open to the sky? (scattered leftovers) go for the nearest cube anywhere
+    if (!best && now - (this.gridT || -9) > 3) {
+      this.gridT = now;
+      let bd = 1e18;
+      const N = pl.N;
+      for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+        const m = pl.cells[j * N + i];
+        if (!m) continue;
+        const [x, y] = pl.centerOf(i, j);
+        const d = (x - ship.x) ** 2 + (y - ship.y) ** 2 + (ORES[pl.matName(m)].tier > tier ? 1e12 : 0);
+        if (d < bd && !this.isBanned(x, y)) { bd = d; const dl = Math.sqrt(d) || 1; best = { i, j, x, y, a: Math.atan2(y, x), sc: 0, dir: [(x - ship.x) / dl, (y - ship.y) / dl] }; }
+      }
+    }
+    if (best) this.theta = best.a;
     this.targetT = 0;
     return best;
+  }
+
+  // the way to (tx, ty) is blocked by rock: a waypoint straight up out of the
+  // pit, above the original surface. null if the way is clear (or we're already out).
+  climbOut(ship, pl, tx, ty, force = false) {
+    const r = Math.hypot(ship.x, ship.y) || 1;
+    if (r > pl.R * 1.06) return null;
+    if (!force) {
+      const dx = tx - ship.x, dy = ty - ship.y, dl = Math.hypot(dx, dy);
+      const hit = pl.raycast(ship.x, ship.y, dx / dl, dy / dl, dl);
+      if (!hit || hit.t > dl - pl.cell) return null;
+    }
+    const k = (pl.R * 1.12) / r;
+    return [ship.x * k, ship.y * k];
   }
 
   // returns ship input
@@ -97,14 +127,15 @@ export class Autopilot {
       const d = Math.hypot(ship.x - world.station.x, ship.y - world.station.y);
       if (d < this.wdDist - 40) { this.wdDist = d; this.wdT = now; }
       if (now - this.wdT > 30 && g.towHome) { g.towHome(); this.wdT = now; return { thrust: 0, strafe: 0, turn: 0, fire: false }; }
-    } else if (now - this.wdT > 40) {
-      if (this.target) this.banned.set(this.target.i * 65536 + this.target.j, now);
+    } else if (now - this.wdT > 30) {
+      this.ban(this.target || ship, now);
       this.target = null; this.scan = null; this.mode = 'home'; this.wdT = now;
     }
     if (this.mode === 'mine' && (full || ship.fuel < ship.fuelMax * 0.22 || !laser || g.idleLeft <= 0)) this.mode = 'home';
     if (this.mode === 'home') {
       const st = world.station;
-      const r = this.steer(ship, st.x, st.y, ECONOMY.dockRadius * 0.4);
+      const w = this.climbOut(ship, world.planet, st.x, st.y);
+      const r = w ? this.steer(ship, w[0], w[1], 0) : this.steer(ship, st.x, st.y, ECONOMY.dockRadius * 0.4);
       if (g.canDock) g.autoDock();
       return r;
     }
@@ -112,10 +143,10 @@ export class Autopilot {
     // give up on a target that's taking forever (wedged, or around a corner)
     this.targetT += 1 / 60;
     if (this.target && this.targetT > 25) {
-      this.banned.set(this.target.i * 65536 + this.target.j, world.time);
+      this.ban(this.target, world.time);
       this.target = null; this.scan = null;
     }
-    if (this.banned.size) for (const [k, t] of this.banned) if (world.time - t > 90) this.banned.delete(k);
+    if (this.bans.length) this.bans = this.bans.filter((b) => world.time - b.t < 240);
     if (!this.target || !pl.matAt(this.target.i, this.target.j)) this.target = this.pickTarget(ship, world);
     const t = this.target;
     if (!t) { this.mode = 'home'; return { thrust: 0, strafe: 0, turn: 0, fire: false }; }
@@ -126,9 +157,20 @@ export class Autopilot {
     let px = t.x + nx * standoff, py = t.y + ny * standoff;
     // rock in the way? it's a mining ship: cut through it
     const ddx = px - ship.x, ddy = py - ship.y, dl = Math.hypot(ddx, ddy);
-    if (dl > ship.radius) {
-      const hit = pl.raycast(ship.x, ship.y, ddx / dl, ddy / dl, dl);
+    if (dl > pl.cell * 2) {
+      // sweep the hull's width, not just its centre line
+      const ux = ddx / dl, uy = ddy / dl, w = ship.radius * 0.8;
+      let hit = null;
+      for (const o of [0, -w, w]) {
+        const h = pl.raycast(ship.x - uy * o, ship.y + ux * o, ux, uy, dl);
+        if (h && h.t > 0 && (!hit || h.t < hit.t)) hit = h;
+      }
       if (depth < 2 && hit && !(hit.i === t.i && hit.j === t.j) && hit.t < dl - pl.cell) {
+        // too hard to cut? climb out of the pit and come at it from above instead
+        if (ORES[pl.matName(pl.matAt(hit.i, hit.j))].tier > this.bestTier(ship)) {
+          const w = this.climbOut(ship, pl, px, py, true);
+          return this.steer(ship, w[0], w[1], 0);
+        }
         const [hx, hy] = pl.centerOf(hit.i, hit.j);
         this.target = { i: hit.i, j: hit.j, x: hx, y: hy, dir: [ddx / dl, ddy / dl] };
         return this.drive(ship, world, depth + 1);

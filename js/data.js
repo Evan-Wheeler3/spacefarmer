@@ -38,8 +38,8 @@ export const CAMERA = {
 // hp: laser damage to rip a cube out; tier: mining tool tier needed to cut it
 // at full speed (weaker tools only scratch it); value: credits per cube.
 export const ORES = {
-  regolith: { name: 'Regolith',      hp: 4,   tier: 1, value: 1,   mass: 0.06, color: '#8a7f73', glow: '#c9b8a3' },
-  ferrite:  { name: 'Ferrite',       hp: 6,   tier: 1, value: 3,   mass: 0.08, color: '#c9a27a', glow: '#ffb86b' },
+  regolith: { name: 'Regolith',      hp: 3,   tier: 1, value: 1,   mass: 0.06, color: '#8a7f73', glow: '#c9b8a3' },
+  ferrite:  { name: 'Ferrite',       hp: 4.5,   tier: 1, value: 3,   mass: 0.08, color: '#c9a27a', glow: '#ffb86b' },
   basalt:   { name: 'Basalt',        hp: 11,  tier: 1, value: 3,   mass: 0.09, color: '#4f4a52', glow: '#8b8494' },
   cuprite:  { name: 'Cuprite',       hp: 15,  tier: 1, value: 8,   mass: 0.09, color: '#e0784a', glow: '#ff8a50' },
   obsidian: { name: 'Obsidian',      hp: 38,  tier: 2, value: 10,  mass: 0.07, color: '#2a2238', glow: '#7b5cff' },
@@ -54,7 +54,7 @@ export const PLANETGEN = {
   cell: 20,                 // world px per cube
   radius: 1700,             // first planet; later planets are `growth` times larger
   growth: 1.2,
-  hpGrowth: 1.6, valueGrowth: 1.8,   // per later planet
+  hpGrowth: 1.45, valueGrowth: 1.8,  // per later planet
   surfaceNoise: 0.035,      // bumpiness of the surface
   layers: [                 // `to`: inner edge as a fraction of the radius
     { name: 'Crust',       to: 0.8, base: 'regolith', vein: 'ferrite', veinChance: 0.2 },
@@ -64,7 +64,7 @@ export const PLANETGEN = {
   ],
   starshipGap: 1300,        // distance from the surface to your starship
   underTierDamage: 0.04,    // share of damage a too-weak tool still does
-  collapseAt: 0.995,        // past this, the remaining dust collapses and the planet is done
+  collapseAt: 0.965,        // past this, the remaining dust collapses and the planet is done
   maxPickups: 320,
 };
 
@@ -352,7 +352,7 @@ export const UPGRADES = [
     cost: [600, 1800, 5000, 14000], effect: { repairEff: 0.15 }, requires: [] },
   // Engineering
   { id: 'frame', role: 'both', branch: 'Engineering', name: 'Frame Extension', desc: 'Build area +2 per level, from 7×7 up to 31×31. Big ships turn slowly; physics is undefeated.',
-    cost: [500, 4000, 20000, 50000, 110000, 230000, 450000, 850000, 1500000, 2600000, 4400000, 7500000], effect: { frame: 1 }, requires: [] },
+    cost: [400, 2500, 12000, 40000, 110000, 230000, 450000, 850000, 1500000, 2600000, 4400000, 7500000], effect: { frame: 1 }, requires: [] },
   { id: 'alloys', role: 'both', branch: 'Engineering', name: 'Better Alloys', desc: '+15% part health per level.',
     cost: [400, 1200, 3500, 10000], effect: { hpMult: 0.15 }, requires: [] },
   { id: 'injectors', role: 'freighter', branch: 'Engineering', name: 'Fuel Injectors', desc: '-12% thruster fuel use per level.',
@@ -485,6 +485,24 @@ PRESETS.borer = { role: 'freighter', name: 'Core Borer', desc: 'A Leviathan with
     if (y === -4 && (x === -4 || x === 0 || x === 4)) return [];
     return null;
   }) };
+
+// the late-game monster: seven deep bores, four fusion cores, a hold like a moon. 15×15.
+PRESETS.eater = { role: 'freighter', name: 'Planet Eater', desc: 'Seven deep bores, four fusion cores and a hold like a small moon. Majestic, and about as nimble as one: it can’t squeeze into tight pits. 15×15, needs Deep Boring, Torch Drives and Fusion.', cells: (() => {
+  const c = [], used = new Set();
+  const put = (p, x, y, r = 0) => { c.push([p, x, y, r]); const P = PARTS[p]; for (let dx = 0; dx < P.w; dx++) for (let dy = 0; dy < P.h; dy++) used.add((x + dx) + ',' + (y + dy)); };
+  for (let x = -6; x <= 6; x += 2) put('deepBore', x, -7);
+  for (let x = -5; x <= 5; x += 2) put('armor', x, -6);
+  for (const x of [-6, -3, 1, 4]) put('fusion', x, -4);
+  put('core', 0, 0);
+  for (let x = -7; x <= 7; x++) put('heavyThruster', x, 6);
+  for (const y of [-5, -1, 3]) { put('thruster', -7, y, 1); put('thruster', 7, y, 3); }
+  for (const x of [-7, 7]) put('thruster', x, -6, 2);
+  for (let x = -6; x <= 6; x += 3) { put('gyro', x, 2); put('gyro', x, -2); }
+  for (const x of [-5, 5]) put('tractor', x, 0);
+  for (let x = -7; x <= 7; x++) for (const y of [4, 5]) if (!used.has(x + ',' + y)) put(y === 4 && Math.abs(x) % 3 === 0 ? 'battery' : 'fuelTank', x, y);
+  for (let y = -5; y <= 3; y++) for (let x = -7; x <= 7; x++) if (!used.has(x + ',' + y)) put('cargo', x, y);
+  return c;
+})() };
 
 // Fun text bits
 export const FLAVOR = {

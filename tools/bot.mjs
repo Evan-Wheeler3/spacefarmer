@@ -13,7 +13,7 @@ const args = process.argv.slice(2);
 const opt = (k, d) => (args.includes(k) ? Number(args[args.indexOf(k) + 1]) : d);
 const HOURS = opt('--hours', 12), PLANETS = opt('--planets', 3);
 
-const { page, errors, close } = await launch({ port: 8290, width: 800, height: 500 });
+const { page, errors, close } = await launch({ port: opt('--port', 8290), width: 800, height: 500 });
 await page.click('text=NEW GAME');
 await sleep(300);
 await page.evaluate(async () => {
@@ -23,7 +23,7 @@ await page.evaluate(async () => {
   g.save.tutorial.done = true; g.tutorial && g.tutorial.remove && g.tutorial.remove();
   g.settings.volume = 0; g.settings.music = 0;
   const bot = window.bot = { simT: 0, repairT: 0, log: [], buys: [] };
-  const byRole = (role) => Object.entries(PRESETS).filter(([, p]) => p.role === role);
+  const byRole = (role) => Object.entries(PRESETS).filter(([id, p]) => p.role === role && id !== 'eater'); // the Eater is a showpiece: too big to dig tidy pits
   const score = (a, role) => role === 'freighter' ? a.mining * Math.min(1, (a.gen + 4) / Math.max(1, a.peakDraw)) * 3 + a.cargo * 0.2 : a.hp + a.dps * 40 + a.shield;
   const fits = (p, role) => {
     const d = Design.fromPreset(p);
@@ -99,6 +99,7 @@ const hms = (s) => `${Math.floor(s / 3600)}h${String(Math.floor((s % 3600) / 60)
 const t0 = Date.now();
 let lastLog = -1, planet = 0, planetStart = 0;
 const splits = [];
+let stallPct = -1, stallT = 0, stallShots = 0;
 for (;;) {
   const st = await page.evaluate(() => bot.run(30));
   if (st.err) { console.log('ERR', st.err); break; }
@@ -114,6 +115,15 @@ for (;;) {
     console.log(`${hms(st.t)}  P${st.planet + 1} ${st.pct.toFixed(2)}%  ¢${st.credits}  ${st.freighter}/${st.fighter}  kills ${st.kills}  retreats ${st.retreats}  repairs ${hms(st.rep)}  longest shift ${Math.round(st.longest)}s ${process.env.AP ? JSON.stringify(st.ap) : ''}  [${Math.round((Date.now() - t0) / 1000)}s real]`);
   }
   if (st.t > HOURS * 3600) break;
+  // stall detector: no progress for 20 game minutes -> screenshot it (once or twice)
+  if (Math.abs(st.pct - stallPct) > 0.3) { stallPct = st.pct; stallT = st.t; }
+  else if (st.t - stallT > 1200 && stallShots < 2 && st.state === 'flight') {
+    stallShots++; stallT = st.t;
+    await page.evaluate(() => { game.cam.userZoom = 0.45; game.cam.snap(game.ship.x, game.ship.y); game.render(); });
+    const name = `docs/screens/stall-${opt('--port', 8290)}-${stallShots}.png`;
+    await page.screenshot({ path: name });
+    console.log('STALL screenshot', name, JSON.stringify(st.ap));
+  }
 }
 if (args.includes('--shot')) {
   await page.evaluate(() => { game.timeScale = 1; game.cam.snap(game.ship.x, game.ship.y); });

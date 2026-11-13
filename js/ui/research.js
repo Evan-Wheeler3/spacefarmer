@@ -72,7 +72,7 @@ export function roadToCore(game) {
     { text: `Dig through the ${L[1].name}`, done: at(L[1].to) },
     { text: 'Research Deep Boring and fit a Deep Bore', done: has('deepbore') && tool(3) },
     { text: `Cut through the ${L[2].name}`, done: at(L[2].to) },
-    { text: `Mine out the ${L[3].name}: 100%`, done: false },
+    { text: `Reach ${Math.round(PLANETGEN.collapseAt * 100)}%: the ${L[3].name.toLowerCase()} collapses and the planet is yours`, done: false },
   ];
 }
 

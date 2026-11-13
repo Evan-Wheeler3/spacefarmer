@@ -1,6 +1,6 @@
 // Game shell: loop, states, and glue between the planet world, the freighter,
 // the escort fighter, the swarm, UI and save.
-import { PRESETS, ECONOMY, PARTS, FLAVOR, ORES, PLANETGEN, PLANET_THEMES, IDLE, MAIN_PLANETS } from './data.js';
+import { PRESETS, ECONOMY, PARTS, FLAVOR, ORES, PLANETGEN, PLANET_THEMES, IDLE, MAIN_PLANETS, LEGACY } from './data.js';
 import { Input } from './input.js';
 import { Camera } from './camera.js';
 import { World } from './world.js';
@@ -13,7 +13,7 @@ import { el, toast, modal } from './ui/dom.js';
 import { loadSave, newSave, writeSave, wipeSave, SANDBOX_KEY } from './save.js';
 import { Dev } from './ui/dev.js';
 import { TouchControls } from './ui/touch.js';
-import { sellValue, idleWindow, upgradeEffects } from './economy.js';
+import { sellValue, idleWindow, upgradeEffects, legacyEffects } from './economy.js';
 import { money, fmt, fmtTime, pick, clamp, TAU } from './util.js';
 
 const FAR_MUTED = new Set(['rail', 'shoot', 'shield', 'partLost', 'bigBoom', 'hit', 'pop', 'explode', 'enemyShoot', 'missile', 'charge', 'steal', 'bump']);
@@ -21,6 +21,7 @@ import { P_GLOW, P_SPARK } from './particles.js';
 import { EnemySystem } from './enemies.js';
 import { Escort } from './fighter.js';
 import { Autopilot } from './autopilot.js';
+import { renderLegacy } from './ui/legacy.js';
 import { renderResearch, goalCard } from './ui/research.js';
 import { renderFighter } from './ui/fighterTab.js';
 import { Tutorial } from './ui/tutorial.js';
@@ -64,6 +65,7 @@ export class Game {
     addEventListener('keydown', unlock);
     this.hangar.addTab('fighter', '⚔ Fighter', (c) => renderFighter(this, c), 'shipyard');
     this.hangar.addTab('research', 'Research', (c) => renderResearch(this, c), 'fighter');
+    this.hangar.addTab('legacy', '★ Legacy', (c) => renderLegacy(this, c), 'research', () => this.save && (this.save.legacy.completed > 0 || this.save.legacy.points > 0));
     this.goalCard = () => goalCard(this);
     this.stars = new Starfield(themeOf(this.save ? this.save.planet.index : 0), 7);
     Input.init(canvas);
@@ -116,7 +118,7 @@ export class Game {
   persist() {
     if (!this.save) return;
     if ((this.state === 'flight' || this.state === 'watch') && this.ship && !this.ship.dead) this.stashShip();
-    this.escort.stash();
+    if (!this.survival) this.escort.stash();
     if (this.world && this.save.planet.index === this.world.planet.index && this.save.planet.seed === this.world.planet.seed) this.save.planet.removed = this.world.planet.exportRemoved();
     writeSave(this.save, this.saveKey);
   }
@@ -167,6 +169,7 @@ export class Game {
   }
 
   ensureWorld() {
+    this.save.upgrades.__legacy = legacyEffects(this.save.legacy.spent);
     const p = this.save.planet;
     if (!this.world || this.world.planet.index !== p.index || this.world.planet.seed !== p.seed) {
       this.world = new World(this, p);
@@ -175,6 +178,7 @@ export class Game {
   }
 
   showTitle() {
+    if (this.survival) { this.endSurvival(true); return; }
     this.state = 'title';
     this.clearOverlays();
     if (this.saveKey) { this.saveKey = undefined; this.timeScale = 1; this.save = loadSave(); this.world = null; if (this.save) this.settings = this.save.settings; }
@@ -188,6 +192,7 @@ export class Game {
           if (has && !this.save.pendingNotice && !confirm('Start over? Your current save will be replaced.')) return;
           this.newGame();
         } }, 'NEW GAME'),
+        has && this.save.legacy.completed >= MAIN_PLANETS ? el('button', { class: 'btn big-btn danger', title: 'Pilot your fighter against a swarm that never stops growing. Your ships and credits are untouched.', onclick: () => this.startSurvival() }, 'SWARM SURVIVAL') : '',
         el('button', { class: 'btn big-btn', title: 'Separate save slot with everything unlocked, cheats and spawn tools. Never touches your real progress.', onclick: () => this.startSandbox() }, 'SANDBOX')),
       has && !this.save.pendingNotice ? el('div', { class: 'dim' }, `${money(this.save.credits)} · ${planetName(this.save.planet.index)} · ${this.save.legacy.completed} planet(s) mined`) : '',
       el('div', { class: 'title-help dim' }, this.touch ? 'Left thumb: fly · FIRE: mine · leave the controls and the autopilot takes over' : 'W/S thrust · A/D turn · Q/E strafe · Space mine · F dock · V watch fighter · P planet view · Esc pause'));
@@ -225,6 +230,46 @@ export class Game {
     this.world = null;
     this.audio && this.audio.unlock();
     this.enterHangar('dev');
+  }
+
+  // ------------------------------------------------------ Swarm Survival
+  // Your real fighter, an endless and much faster swarm, a high score. Nothing
+  // carries over: the fighter's damage and your credits are restored afterwards.
+  startSurvival() {
+    this.audio && this.audio.unlock();
+    if (this.save.pendingNotice) return;
+    const fs = this.save.fighter;
+    this.survival = { design: JSON.parse(JSON.stringify(fs.design)), repairT: fs.repairT || 0, credits: this.save.credits, kills: 0 };
+    fs.repairT = 0;
+    this.ensureWorld();
+    this.launch();
+    if (this.state !== 'flight') { this.endSurvival(true); return; }
+    this.enterWatch();
+    this.escort.manual = true;
+    modal('SWARM SURVIVAL', el('div', {},
+      el('p', {}, 'Your fighter, alone on the picket line. The swarm grows three times faster and never stops.'),
+      el('p', { class: 'dim' }, `Best so far: ${this.save.records.survival ? fmtTime(this.save.records.survival.time) + ' · ' + this.save.records.survival.kills + ' kills' : 'none yet'}. Hand control to the AI any time.`)),
+      [{ label: 'Bring it', cls: 'danger' }]);
+  }
+
+  endSurvival(silent = false) {
+    const run = this.survival;
+    if (!run) return;
+    this.survival = null;
+    const t = this.enemySystem.shiftT, kills = run.kills;
+    const fs = this.save.fighter;
+    fs.design = run.design; fs.repairT = run.repairT;
+    this.save.credits = run.credits;
+    const best = this.save.records.survival;
+    const isBest = !silent && (!best || t > best.time);
+    if (isBest) this.save.records.survival = { time: t, kills };
+    this.escort.ship = null; this.escort.manual = false;
+    this.ship = null;
+    this.persist();
+    this.showTitle();
+    if (!silent) modal(isBest ? 'NEW BEST' : 'OVERRUN', el('div', { class: 'reward' },
+      el('div', { class: 'reward-big' }, fmtTime(t)),
+      el('p', {}, `${kills} ships destroyed${isBest ? '. A new record.' : `. Best: ${fmtTime(best.time)}.`}`)), [{ label: 'OK', cls: 'primary' }]);
   }
 
   continueGame() {
@@ -306,17 +351,27 @@ export class Game {
   // cargo is offloaded automatically whenever the freighter passes the hangar
   offload() {
     const s = this.ship;
-    if (!s || s.cargoUnits < 1) return 0;
-    const v = sellValue(s.cargo, this.levels, this.world.planet.valueMult);
+    if (!s) return 0;
+    const v = s.cargoUnits >= 1 ? sellValue(s.cargo, this.levels, this.world.planet.valueMult) : 0;
     s.clearCargo(); s.recomputeMass();
     this.save.cargo = {}; this.save.cargoUnits = 0;
     const fuelCost = Math.min(this.save.credits + v, Math.ceil((s.fuelMax - s.fuel) * ECONOMY.refuelCostPerUnit));
     s.fuel = s.fuelMax;
     this.save.credits += v - fuelCost;
     this.save.stats.earned += v;
-    this.world.floaters.add(s.x, s.y - s.radius - 20, '+' + money(v), '#ffd60a', 22, -40, 1.6);
-    this.sfx('sell');
+    if (v > 0) { this.world.floaters.add(s.x, s.y - s.radius - 20, '+' + money(v), '#ffd60a', 22, -40, 1.6); this.sfx('sell'); }
     return v;
+  }
+
+  // ran the tanks dry: the starship reels the freighter in (cargo and all)
+  towHome() {
+    const s = this.ship, st = this.world.station;
+    this.world.particles.ring(s.x, s.y, 200, '#7df9ff', 0.5, 4);
+    s.x = st.x; s.y = st.y + 160 + s.radius; s.vx = 0; s.vy = 60; s.av = 0;
+    this.cam.snap(s.x, s.y);
+    this.offload();
+    this.autopilot.mode = 'mine';
+    toast('Out of fuel: the starship towed the freighter home.', '', 3000);
   }
 
   // autopilot reached the starship: offload, then head back out while the window lasts
@@ -337,6 +392,7 @@ export class Game {
   // the fighter can't hold: both ships warp home and nothing gets mined until it's repaired
   fighterDown(destroyed) {
     if (this.state !== 'flight' && this.state !== 'watch') return;
+    if (this.survival) { this.endSurvival(); return; }
     const f = this.escort.ship;
     if (f) {
       this.world.particles.burst(f.x, f.y, 40, '#7df9ff', 400, 0.8, 3, P_SPARK);
@@ -381,8 +437,10 @@ export class Game {
     this.sfx('planetBoom');
     const s = this.save;
     const idx = s.planet.index;
-    const pts = 1 + Math.floor(idx / 2);
-    s.credits += credits;
+    const pts = 3 + 2 * idx;
+    const seedLv = s.legacy.spent.seed || 0;
+    const seed = Math.round(seedLv * (LEGACY.find((p) => p.id === 'seed').startCredits) * Math.pow(PLANETGEN.valueGrowth, idx + 1));
+    s.credits += credits + seed;
     s.legacy.completed++;
     s.legacy.points += pts;
     const t = s.stats.planetTime;
@@ -398,7 +456,8 @@ export class Game {
       modal(finishedMain ? 'YOU MINED THEM ALL' : 'PLANET MINED', el('div', { class: 'reward' },
         el('div', { class: 'reward-big' }, planetName(idx)),
         el('p', {}, 'Every last cube. The core collapsed for a final ', el('span', { class: 'money' }, money(credits)), '.'),
-        el('p', {}, `+${pts} Legacy point${pts > 1 ? 's' : ''} for permanent bonuses (Legacy tab).`),
+        seed ? el('p', {}, 'Seed Money: ', el('span', { class: 'money' }, money(seed)), ' to get started.') : '',
+        el('p', {}, `+${pts} Legacy points for permanent bonuses (★ Legacy tab). New research unlocks on the next planet too.`),
         el('p', { class: 'dim' }, finishedMain ? 'That was the main campaign. Endless planets keep coming, and Swarm Survival is unlocked on the title screen.' : `Next up: ${planetName(idx + 1)}. Bigger, deeper and better defended.`)),
         [{ label: 'Onward', cls: 'gold' }]);
     }, 2600);
@@ -418,12 +477,13 @@ export class Game {
     const f = this.escort;
     const status = el('span', { class: 'w-status' });
     const ctrl = el('button', { class: 'btn small', onclick: (e) => { e.currentTarget.blur(); f.manual = !f.manual; this.sfx('click'); } });
-    this.watchPanel = el('div', { class: 'watch' }, el('span', { class: 'w-tag' }, 'FIGHTER'), status, ctrl,
-      el('button', { class: 'btn small primary', onclick: (e) => { e.currentTarget.blur(); this.exitWatch(); } }, '◀ Freighter'));
+    const surv = !!this.survival;
+    this.watchPanel = el('div', { class: 'watch' }, el('span', { class: 'w-tag' }, surv ? 'SURVIVAL' : 'FIGHTER'), status, ctrl,
+      el('button', { class: 'btn small ' + (surv ? 'danger' : 'primary'), onclick: (e) => { e.currentTarget.blur(); this.exitWatch(); } }, surv ? 'End run' : '◀ Freighter'));
     this.ui.append(this.watchPanel);
     const refresh = () => {
       if (!this.watchPanel) return;
-      status.textContent = `Hull ${Math.round(f.hull() * 100)}% · ${this.enemySystem.threatLabel()} swarm · ${fmtTime(this.enemySystem.shiftT)}`;
+      status.textContent = `Hull ${Math.round(f.hull() * 100)}% · ${this.survival ? this.survival.kills + ' kills' : this.enemySystem.threatLabel() + ' swarm'} · ${fmtTime(this.enemySystem.shiftT)}`;
       ctrl.textContent = f.manual ? 'Hand back to AI' : (this.touch ? 'Take control' : 'Take control (A/D aim · Space fire)');
       ctrl.classList.toggle('on', f.manual);
       setTimeout(refresh, 250);
@@ -432,6 +492,7 @@ export class Game {
   }
   exitWatch() {
     if (this.state !== 'watch') return;
+    if (this.survival) { this.endSurvival(); return; }
     this.escort.manual = false;
     document.body.classList.remove('watching');
     if (this.watchPanel) { this.watchPanel.remove(); this.watchPanel = null; }
@@ -579,16 +640,22 @@ export class Game {
     if (Input.hit('KeyM')) { this.settings.volume = this.settings.volume > 0 ? 0 : 0.7; this.applySettings(); toast(this.settings.volume ? 'Sound on' : 'Sound muted'); }
     if (Input.mouse.wheel) this.cam.userZoom = clamp(this.cam.userZoom * (Input.mouse.wheel > 0 ? 0.9 : 1.1), 0.25, 2);
 
+    if (this.survival) {
+      const st = this.world.station;
+      ship.x = st.x; ship.y = st.y + 160 + ship.radius; ship.vx = ship.vy = 0; ship.av = 0;
+      ship.input = { thrust: 0, turn: 0, strafe: 0, fire: false, brake: false };
+      this.idleLeft = 1e9;
+    }
     // freighter: your hands, or the autopilot after a few idle seconds
     const inp = this.state === 'flight' ? Input.flight() : { thrust: 0, turn: 0, strafe: 0, fire: false, brake: false };
     const active = Math.abs(inp.thrust) + Math.abs(inp.turn) + Math.abs(inp.strafe) > 0.05 || inp.fire || inp.brake;
     if (active) { this.lastInput = this.time; this.idleLeft = idleWindow(this.levels); if (this.autopilot.mode === 'home' && ship.cargoUnits < ship.cargoMax * 0.95) this.autopilot.mode = 'mine'; }
-    this.autoOn = this.time - this.lastInput > IDLE.delay && !active;
+    this.autoOn = !this.survival && this.time - this.lastInput > IDLE.delay && !active;
     if (this.autoOn) {
       this.idleLeft = Math.max(0, this.idleLeft - dt);
       ship.input = this.autopilot.drive(ship, this.world);
       this.measureRate(dt);
-    } else ship.input = inp;
+    } else if (!this.survival) ship.input = inp;
     if (this.state !== 'flight' && this.state !== 'watch') return; // the autopilot docked
 
     // starship: cargo offloads on arrival; F docks to upgrade

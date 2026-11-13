@@ -1,176 +1,130 @@
-// Headless economy bot for the two-ship game. The freighter mines on trips
-// (trip model calibrated against tools/playtest.mjs, which flies the real ship);
-// in parallel the fighter works its contract board using the same ratings the
-// game shows and the same rules as offline resolution (calibrated against
-// tools/arena.mjs, which runs the real fighter simulation).
+// Pacing bot: plays the real game headless, as fast as the CPU allows.
+// The autopilot mines, the fighter defends, the swarm escalates: all of it is
+// the actual simulation (stepped directly, no rendering). Between docks the bot
+// buys research (cheapest useful first) and swaps to the biggest preset ships
+// that fit. Repair time is added to the clock without being simulated.
 //
-//   node tools/bot.mjs            # one run, timeline
-//   node tools/bot.mjs --runs 20  # spread over seeded runs
-import { SECTORS, BOSSES, ORES, PRESETS, ECONOMY, FIGHTER, PARTS, PLANETS } from '../js/data.js';
-import { analyze, Design } from '../js/shipdesign.js';
-import { canBuyUpgrade, oreFromDamage, planetReward, frameSize, partUnlocked, upgradeEffects, UPGRADE_BY_ID, sectorUnlocked } from '../js/economy.js';
-import { nextContract, contractWave, contractPay, rate } from '../js/contracts.js';
-import { rng } from '../js/util.js';
+//   node tools/bot.mjs                 # until 3 planets are mined (or 12 h)
+//   node tools/bot.mjs --hours 2       # stop after 2 game hours
+//   node tools/bot.mjs --planets 1     # stop after the first planet
+import { launch, sleep } from './pw.mjs';
 
 const args = process.argv.slice(2);
-const RUNS = Number(args[args.indexOf('--runs') + 1]) || 1;
-const MINING_EFF = 0.65;   // share of a trip spent with a laser on rock (playtest-calibrated)
-const WIN_RISK = 0.85;     // the fighter clears a contract below this rated risk (arena-calibrated)
+const opt = (k, d) => (args.includes(k) ? Number(args[args.indexOf(k) + 1]) : d);
+const HOURS = opt('--hours', 12), PLANETS = opt('--planets', 3);
 
-const PLAN = [
-  'brokers', 'optics', 'ballistics', 'frame', { freighter: 'prospector' }, 'alloys', 'shields', { fighter: 'bulwark' }, 'fortify', 'brokers', 'optics',
-  'licRust', { jump: 1 }, 'tractor', 'refinery', 'ballistics', 'loaders', { freighter: 'excavator' }, 'optics', 'brokers', 'fortify', 'alloys',
-  'licGlass', { jump: 2 }, 'railgun', 'fusion', 'harmonics', { fighter: 'citadel' }, 'injectors', 'torch', 'frame', { freighter: 'leviathan' },
-  'refinery', 'ballistics', 'loaders', 'optics', 'brokers', 'fortify', 'alloys', 'harmonics',
-  'licPale', { jump: 3 }, 'cracker', 'ballistics', 'loaders', 'refinery', 'fortify', 'optics', 'harmonics', 'alloys', 'ballistics',
-  'licGorvox', { jump: 4 }, { fighter: 'doom' }, { planet: true },
-];
-
-function fits(preset, levels) {
-  const d = Design.fromPreset(PRESETS[preset]);
-  const h = (frameSize(levels) - 1) / 2;
-  return d.entries.every((e) => partUnlocked(e.part, levels) && Math.abs(e.x) <= h && Math.abs(e.y) <= h && Math.abs(e.x + PARTS[e.part].w - 1) <= h && Math.abs(e.y + PARTS[e.part].h - 1) <= h);
-}
-
-function simulate(seed) {
-  const R = rng(seed);
-  const plan = PLAN.slice();
-  const save = { credits: ECONOMY.startCredits, upgrades: {}, bossKills: {}, sector: 0, contracts: {}, planets: 0 };
-  let freighter = 'pebble', fighter = 'bastion', fSector = 0, fails = {}, wear = 0;
-  let t = 0, trips = 0, mined = 0, fought = 0, retreats = 0;
-  const log = [];
-  const mark = (what) => log.push({ t, what, credits: Math.round(save.credits) });
-  const fA = () => analyze(Design.fromPreset(PRESETS[freighter]), save.upgrades, { role: 'freighter' });
-  const gA = () => analyze(Design.fromPreset(PRESETS[fighter]), save.upgrades, { role: 'fighter' });
-
-  function buy() {
-    for (let guard = 0; guard < 200; guard++) {
-      let acted = false;
-      for (let i = 0; i < plan.length; i++) {
-        const it = plan[i];
-        if (it.done) continue;
-        if (typeof it === 'string') {
-          const chk = canBuyUpgrade(it, save);
-          if (chk.reason === 'Maxed') { plan[i] = { done: true }; continue; }
-          if (!chk.ok && chk.reason !== 'Not enough credits') continue;
-          if (!chk.ok) return;
-          save.credits -= chk.cost; save.upgrades[it] = (save.upgrades[it] || 0) + 1; fails = {};
-          plan[i] = { done: true }; mark(`research ${UPGRADE_BY_ID[it].name} ${save.upgrades[it]}`); acted = true; break;
-        }
-        if (it.freighter || it.fighter) {
-          const id = it.freighter || it.fighter, cur = it.freighter ? freighter : fighter;
-          if (!fits(id, save.upgrades)) continue;
-          const cost = Design.fromPreset(PRESETS[id]).value() - Design.fromPreset(PRESETS[cur]).value();
-          if (cost > save.credits) return;
-          save.credits -= cost;
-          if (it.freighter) freighter = id; else { fighter = id; fails = {}; }
-          plan[i] = { done: true }; mark(`${it.freighter ? 'freighter' : 'fighter'} → ${PRESETS[id].name} (¢${cost})`); acted = true; break;
-        }
-        if (it.jump !== undefined) {
-          if (!sectorUnlocked(it.jump, save)) continue;
-          save.sector = it.jump; plan[i] = { done: true }; mark(`freighter jumps to ${SECTORS[it.jump].name}`); acted = true; break;
-        }
-        if (it.planet) { if (fighter === 'doom' && save.upgrades.licGorvox) return 'planet'; continue; }
+const { page, errors, close } = await launch({ port: 8290, width: 800, height: 500 });
+await page.click('text=NEW GAME');
+await sleep(300);
+await page.evaluate(async () => {
+  const [{ PRESETS, UPGRADES, PARTS, LEGACY }, { Design, analyze }, eco] = await Promise.all([import('/js/data.js'), import('/js/shipdesign.js'), import('/js/economy.js')]);
+  const g = window.game;
+  g.timeScale = 0; // the page's own loop stops simulating; the bot steps the game itself
+  g.save.tutorial.done = true; g.tutorial && g.tutorial.remove && g.tutorial.remove();
+  g.settings.volume = 0; g.settings.music = 0;
+  const bot = window.bot = { simT: 0, repairT: 0, log: [], buys: [] };
+  const byRole = (role) => Object.entries(PRESETS).filter(([, p]) => p.role === role);
+  const score = (a, role) => role === 'freighter' ? a.mining * Math.min(1, (a.gen + 4) / Math.max(1, a.peakDraw)) * 3 + a.cargo * 0.2 : a.hp + a.dps * 40 + a.shield;
+  const fits = (p, role) => {
+    const d = Design.fromPreset(p);
+    const h = (eco.frameSize(g.save.upgrades) - 1) / 2;
+    if (!d.entries.every((e) => eco.partUnlocked(e.part, g.save.upgrades) && Math.abs(e.x) <= h && Math.abs(e.y) <= h && Math.abs(e.x + PARTS[e.part].w - 1) <= h && Math.abs(e.y + PARTS[e.part].h - 1) <= h)) return null;
+    const a = analyze(d, g.save.upgrades, { role });
+    return a.launchable ? { d, a } : null;
+  };
+  const best = (role) => {
+    let top = null;
+    for (const [id, p] of byRole(role)) { const f = fits(p, role); if (f && (!top || score(f.a, role) > top.s)) top = { id, s: score(f.a, role), d: f.d }; }
+    return top;
+  };
+  // weights: lower = buy sooner (tools for the next layer, the swarm, automation)
+  const weight = (u) => ({ plasma: 0.15, deepbore: 0.15, frame: 0.8, ballistics: 0.8, fortify: 0.9, optics: 0.8 }[u.id] || 1);
+  bot.shop = () => {
+    const L = g.save.legacy;
+    for (let guard = 0; guard < 40; guard++) {
+      const opts = LEGACY.filter((p) => (L.spent[p.id] || 0) < p.cost.length && p.cost[L.spent[p.id] || 0] <= L.points);
+      if (!opts.length) break;
+      const p = opts.sort((a, b) => a.cost[L.spent[a.id] || 0] - b.cost[L.spent[b.id] || 0])[0];
+      L.points -= p.cost[L.spent[p.id] || 0]; L.spent[p.id] = (L.spent[p.id] || 0) + 1;
+    }
+    g.save.upgrades.__legacy = eco.legacyEffects(L.spent);
+    for (let guard = 0; guard < 60; guard++) {
+      let pick = null;
+      for (const u of UPGRADES) {
+        const c = eco.canBuyUpgrade(u.id, g.save);
+        if (!c.ok) continue;
+        const v = c.cost * weight(u);
+        if (!pick || v < pick.v) pick = { u, v, cost: c.cost };
       }
-      if (!acted) return;
+      if (!pick) break;
+      g.save.credits -= pick.cost;
+      g.save.upgrades[pick.u.id] = (g.save.upgrades[pick.u.id] || 0) + 1;
+      bot.buys.push([Math.round(bot.simT + bot.repairT), pick.u.id, g.save.upgrades[pick.u.id]]);
     }
-  }
+    for (const role of ['freighter', 'fighter']) {
+      const b = best(role);
+      if (!b) continue;
+      const json = b.d.toJSON();
+      if (role === 'freighter') { if (bot.freighter !== b.id) { g.save.design = json; bot.freighter = b.id; bot.log.push([Math.round(bot.simT + bot.repairT), 'freighter → ' + b.id]); } }
+      else if (bot.fighter !== b.id) { g.save.fighter.design = json; bot.fighter = b.id; bot.log.push([Math.round(bot.simT + bot.repairT), 'fighter → ' + b.id]); }
+    }
+  };
+  // advance the game by `sec` simulated seconds
+  bot.run = (sec) => {
+    for (const m of document.querySelectorAll('.modal-back')) m.remove();
+    if (g.completing) return bot.status();
+    if (g.state === 'hangar') {
+      if (g.save.fighter.repairT > 0) { bot.repairT += g.save.fighter.repairT; g.save.fighter.repairT = 0; }
+      bot.shop();
+      g.launch();
+      if (g.state !== 'flight') return bot.status('launch failed');
+    }
+    const steps = Math.round(sec * 60);
+    for (let i = 0; i < steps && (g.state === 'flight' || g.state === 'watch') && !g.completing; i++) {
+      g.idleLeft = 1e9; // an active player keeps the autopilot going
+      g.update(1 / 60);
+      bot.simT += 1 / 60;
+    }
+    return bot.status();
+  };
+  bot.status = (err) => ({
+    err, t: bot.simT + bot.repairT, sim: bot.simT, rep: bot.repairT, state: g.state, planet: g.save.planet.index,
+    pct: g.world ? g.world.planet.percent : 0, credits: Math.floor(g.save.credits), freighter: bot.freighter, fighter: bot.fighter,
+    kills: g.save.stats.kills, retreats: g.save.stats.retreats, longest: g.save.fighter.longestShift || 0,
+    ap: g.ship && g.world ? (() => { const t = g.autopilot.target, pl = g.world.planet; return { mode: g.autopilot.mode, r: Math.round(Math.hypot(g.ship.x, g.ship.y)), tr: t ? Math.round(Math.hypot(t.x, t.y)) : null, mat: t ? pl.matName(pl.matAt(t.i, t.j)) : null, theta: +(g.autopilot.theta || 0).toFixed(2), cargo: Math.round(g.ship.cargoUnits), fuel: Math.round(g.ship.fuel), v: Math.round(Math.hypot(g.ship.vx, g.ship.vy)) }; })() : null,
+  });
+});
 
-  // fighter: pick the toughest unlocked sector it can work comfortably
-  function chooseFighterSector() {
-    const a = gA();
-    let best = fSector;
-    for (let i = 0; i < SECTORS.length; i++) {
-      if (!sectorUnlocked(i, save)) continue;
-      const n = nextContract(save, i);
-      if (n && n.kind === 'wave' && rate(a, n.wave).risk < 0.5 && i > best) best = i;
-    }
-    if (best !== fSector) { fSector = best; mark(`fighter posts to ${SECTORS[best].name}`); }
+const hms = (s) => `${Math.floor(s / 3600)}h${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}m`;
+const t0 = Date.now();
+let lastLog = -1, planet = 0, planetStart = 0;
+const splits = [];
+for (;;) {
+  const st = await page.evaluate(() => bot.run(30));
+  if (st.err) { console.log('ERR', st.err); break; }
+  if (st.planet !== planet) {
+    splits.push(st.t - planetStart);
+    console.log(`*** planet ${planet + 1} mined in ${hms(st.t - planetStart)} (total ${hms(st.t)})`);
+    planet = st.planet; planetStart = st.t;
+    if (planet >= PLANETS) break;
   }
-
-  // run the fighter for `secs` seconds of game time
-  function fight(secs) {
-    const a = gA();
-    let guard = 0;
-    while (secs > 0 && guard++ < 400) {
-      const n = nextContract(save, fSector);
-      if (!n) break;
-      const key = `${fSector}:${n.kind}:${n.k}`;
-      let p = n;
-      if ((fails[key] || 0) >= FIGHTER.failsBeforePatrol) {
-        const k = Math.max(0, Math.min(n.k, SECTORS[fSector].contracts) - 1);
-        p = { kind: 'wave', k, farm: true, wave: contractWave(fSector, k), pay: contractPay(fSector, k, true) };
-      }
-      const r = rate(a, p.kind === 'boss' ? p.foe : p.wave);
-      const dur = r.ttk + FIGHTER.breather + 5; // +5s for the wave to fly in
-      secs -= dur;
-      const st = (save.contracts[SECTORS[fSector].id] ||= { k: 0, cleared: 0 });
-      // damage piles up across waves until the platform has to pull back for repairs
-      wear += Math.min(1, r.risk) * 0.6;
-      const worn = wear > 1 - FIGHTER.retreatDefault;
-      if (worn) { wear = 0; retreats++; save.credits -= Math.min(save.credits, a.value * 0.5 * ECONOMY.repairCostFactor * FIGHTER.repairDiscount); secs -= FIGHTER.repairTime; continue; }
-      if (r.risk < WIN_RISK) {
-        const pay = p.pay + (p.kind === 'wave' ? p.wave.bounty : 0);
-        save.credits += pay; fought += pay;
-        if (!p.farm) {
-          delete fails[key];
-          if (p.kind === 'wave') { st.k++; if (st.k >= SECTORS[fSector].contracts && !SECTORS[fSector].boss) { st.k = 0; st.cleared++; } }
-          else {
-            st.k = 0; st.cleared++;
-            const first = !save.bossKills[p.boss];
-            save.bossKills[p.boss] = 1;
-            if (first) mark(`FIGHTER DEFEATS ${BOSSES[p.boss].name} (fight ${Math.round(r.ttk)}s, risk ${r.risk.toFixed(2)})`);
-          }
-        }
-      } else {
-        fails[key] = (fails[key] || 0) + 1; retreats++; wear = 0;
-        save.credits -= Math.min(save.credits, a.value * 0.5 * ECONOMY.repairCostFactor * FIGHTER.repairDiscount);
-        secs -= FIGHTER.repairTime;
-      }
-    }
+  if (st.state === 'hangar' && st.pct === 0 && st.planet === planet && splits.length) await sleep(50);
+  if (Math.floor(st.t / 600) !== lastLog) {
+    lastLog = Math.floor(st.t / 600);
+    console.log(`${hms(st.t)}  P${st.planet + 1} ${st.pct.toFixed(2)}%  ¢${st.credits}  ${st.freighter}/${st.fighter}  kills ${st.kills}  retreats ${st.retreats}  repairs ${hms(st.rep)}  longest shift ${Math.round(st.longest)}s ${process.env.AP ? JSON.stringify(st.ap) : ''}  [${Math.round((Date.now() - t0) / 1000)}s real]`);
   }
-
-  buy();
-  mark('start');
-  while (t < 8 * 3600) {
-    const a = fA(), sec = SECTORS[save.sector], f = upgradeEffects(save.upgrades);
-    const oreRate = oreFromDamage(a.mining, sec.hardness, save.upgrades) * MINING_EFF;
-    const travel = 4 * Math.sqrt(900 / Math.max(20, a.accelLoaded)) + 10;
-    const T = Math.max(30, travel + (oreRate > 0 ? a.cargo / oreRate : 0));
-    let value = 0;
-    for (const k in sec.ores) value += sec.ores[k] * ORES[k].value;
-    const income = a.cargo * value * f.sellMult * (0.95 + R() * 0.1);
-    save.credits += income - a.fuel * 0.5 * ECONOMY.refuelCostPerUnit;
-    mined += income;
-    chooseFighterSector();
-    fight(T);
-    t += T; trips++;
-    if (buy() === 'planet') {
-      t += 150; // post the doomsday platform, hold the line, crack
-      const reward = planetReward(save.planets, save.upgrades) + PLANETS.coreDrops * ORES.core.value * PLANETS.coreSalvage;
-      save.credits += reward; save.planets++;
-      mark(`PLANET DESTROYED (+¢${Math.round(reward)})`);
-      break;
-    }
-  }
-  return { log, t, trips, mined, fought, retreats, done: save.planets > 0 };
+  if (st.t > HOURS * 3600) break;
 }
-
-const fmtT = (s) => `${Math.floor(s / 3600)}h${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}m`;
-if (RUNS === 1) {
-  const r = simulate(1);
-  for (const e of r.log) console.log(`${fmtT(e.t).padStart(7)}  ¢${String(e.credits).padStart(9)}  ${e.what}`);
-  console.log(`\n${r.done ? 'Planet destroyed' : 'Did NOT finish'} after ${fmtT(r.t)} · ${r.trips} freighter trips · mining ¢${Math.round(r.mined)} vs fighter ¢${Math.round(r.fought)} · ${r.retreats} retreats`);
-} else {
-  const keys = ['FIGHTER DEFEATS Foreman Grudge', 'freighter jumps to Rust Belt', 'FIGHTER DEFEATS The Auditor', 'freighter jumps to Glass Reach', 'FIGHTER DEFEATS Matriarch Vexa', 'freighter jumps to The Deep Pale', 'FIGHTER DEFEATS Dreadnought Mildred', 'PLANET DESTROYED'];
-  const acc = Object.fromEntries(keys.map((k) => [k, []]));
-  let unfinished = 0, mined = 0, fought = 0;
-  for (let i = 0; i < RUNS; i++) {
-    const r = simulate(1000 + i);
-    if (!r.done) unfinished++;
-    mined += r.mined; fought += r.fought;
-    for (const k of keys) { const e = r.log.find((x) => x.what.startsWith(k)); if (e) acc[k].push(e.t); }
-  }
-  for (const k of keys) { const v = acc[k].sort((a, b) => a - b); console.log(k.padEnd(38), v.length ? `median ${fmtT(v[v.length >> 1])}  range ${fmtT(v[0])}–${fmtT(v[v.length - 1])}` : 'never'); }
-  console.log(`income split: mining ${Math.round((100 * mined) / (mined + fought))}% / fighter ${Math.round((100 * fought) / (mined + fought))}% · unfinished ${unfinished}/${RUNS}`);
+if (args.includes('--shot')) {
+  await page.evaluate(() => { game.timeScale = 1; game.cam.snap(game.ship.x, game.ship.y); });
+  await sleep(800);
+  await page.screenshot({ path: 'docs/screens/bot-end.png' });
+  await page.evaluate(() => { game.planetView = true; }); await sleep(800);
+  await page.screenshot({ path: 'docs/screens/bot-end-planet.png' });
 }
+const extra = await page.evaluate(() => ({ log: bot.log, buys: bot.buys.length, ups: game.save.upgrades }));
+console.log('ship changes', extra.log.map(([t, s]) => `${hms(t)} ${s}`).join(' · '));
+console.log('research', JSON.stringify(extra.ups), `(${extra.buys} purchases)`);
+if (splits.length) console.log('planet splits', splits.map(hms).join(' / '));
+if (errors.length) console.log('ERRORS', errors.slice(0, 5));
+await close();

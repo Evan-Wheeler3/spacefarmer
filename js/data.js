@@ -38,12 +38,12 @@ export const CAMERA = {
 // hp: laser damage to rip a cube out; tier: mining tool tier needed to cut it
 // at full speed (weaker tools only scratch it); value: credits per cube.
 export const ORES = {
-  regolith: { name: 'Regolith',      hp: 5,   tier: 1, value: 1,   mass: 0.06, color: '#8a7f73', glow: '#c9b8a3' },
-  ferrite:  { name: 'Ferrite',       hp: 7,   tier: 1, value: 3,   mass: 0.08, color: '#c9a27a', glow: '#ffb86b' },
-  basalt:   { name: 'Basalt',        hp: 16,  tier: 1, value: 3,   mass: 0.09, color: '#4f4a52', glow: '#8b8494' },
-  cuprite:  { name: 'Cuprite',       hp: 22,  tier: 1, value: 8,   mass: 0.09, color: '#e0784a', glow: '#ff8a50' },
-  obsidian: { name: 'Obsidian',      hp: 60,  tier: 2, value: 10,  mass: 0.07, color: '#2a2238', glow: '#7b5cff' },
-  lumen:    { name: 'Lumen Crystal', hp: 75,  tier: 2, value: 28,  mass: 0.06, color: '#7ff0ff', glow: '#9ffcff' },
+  regolith: { name: 'Regolith',      hp: 4,   tier: 1, value: 1,   mass: 0.06, color: '#8a7f73', glow: '#c9b8a3' },
+  ferrite:  { name: 'Ferrite',       hp: 6,   tier: 1, value: 3,   mass: 0.08, color: '#c9a27a', glow: '#ffb86b' },
+  basalt:   { name: 'Basalt',        hp: 11,  tier: 1, value: 3,   mass: 0.09, color: '#4f4a52', glow: '#8b8494' },
+  cuprite:  { name: 'Cuprite',       hp: 15,  tier: 1, value: 8,   mass: 0.09, color: '#e0784a', glow: '#ff8a50' },
+  obsidian: { name: 'Obsidian',      hp: 38,  tier: 2, value: 10,  mass: 0.07, color: '#2a2238', glow: '#7b5cff' },
+  lumen:    { name: 'Lumen Crystal', hp: 48,  tier: 2, value: 28,  mass: 0.06, color: '#7ff0ff', glow: '#9ffcff' },
   magmite:  { name: 'Magmite',       hp: 200, tier: 3, value: 35,  mass: 0.08, color: '#b8321e', glow: '#ff7a3d' },
   void:     { name: 'Voidheart',     hp: 240, tier: 3, value: 90,  mass: 0.05, color: '#c08bff', glow: '#e0c2ff' },
   core:     { name: 'Planet Core',   hp: 400, tier: 3, value: 400, mass: 0.04, color: '#ffe36b', glow: '#fff3a8' },
@@ -51,9 +51,9 @@ export const ORES = {
 
 // The planet: a disc of cubes in layers. Deeper layers are harder and richer.
 export const PLANETGEN = {
-  cell: 16,                 // world px per cube
-  radius: 2000,             // first planet; later planets are `growth` times larger
-  growth: 1.25,
+  cell: 20,                 // world px per cube
+  radius: 1700,             // first planet; later planets are `growth` times larger
+  growth: 1.2,
   hpGrowth: 1.6, valueGrowth: 1.8,   // per later planet
   surfaceNoise: 0.035,      // bumpiness of the surface
   layers: [                 // `to`: inner edge as a fraction of the radius
@@ -139,7 +139,7 @@ export const PARTS = {
   laser: {
     name: 'Mining Laser', cat: 'utility', role: 'freighter', w: 1, h: 1, mass: 1.6, cost: 90, hp: 40,
     desc: 'Tier 1 tool. Cuts rock along its facing; fine for the Crust and Mantle.',
-    mining: 13, tier: 1, laserRange: 170, enemyDps: 0, powerUse: 3, directional: true, muzzle: true, unlock: null,
+    mining: 17, tier: 1, laserRange: 170, enemyDps: 0, powerUse: 3, directional: true, muzzle: true, unlock: null,
   },
   turret: {
     name: 'Autocannon', cat: 'weapon', role: 'fighter', w: 1, h: 1, mass: 2, cost: 130, hp: 55,
@@ -160,7 +160,7 @@ export const PARTS = {
   plasmaCutter: {
     name: 'Plasma Cutter', cat: 'utility', role: 'freighter', w: 1, h: 1, mass: 2.4, cost: 900, hp: 50,
     desc: 'Tier 2 tool. Cuts obsidian like warm butter — required to mine the Deep Mantle at full speed.',
-    mining: 34, tier: 2, laserRange: 190, enemyDps: 0, powerUse: 7, directional: true, muzzle: true, beam: '150,120,255', beamWidth: 11, unlock: 'plasma',
+    mining: 50, tier: 2, laserRange: 190, enemyDps: 0, powerUse: 7, directional: true, muzzle: true, beam: '150,120,255', beamWidth: 11, unlock: 'plasma',
   },
   deepBore: {
     name: 'Deep Bore', cat: 'utility', role: 'freighter', w: 1, h: 2, mass: 6, cost: 6500, hp: 120,
@@ -335,8 +335,8 @@ export const UPGRADES = [
   // Mining (freighter)
   { id: 'brokers', role: 'freighter', branch: 'Mining', name: 'Ore Brokers', desc: '+12% sell price per level. They know a guy.',
     cost: [150, 450, 1200, 3200, 8000, 20000], effect: { sellMult: 0.12 }, requires: [] },
-  { id: 'optics', role: 'freighter', branch: 'Mining', name: 'Laser Optics', desc: '+20% mining damage for every tool, per level.',
-    cost: [250, 700, 1900, 5000, 13000, 32000, 80000], effect: { miningMult: 0.2 }, requires: [] },
+  { id: 'optics', role: 'freighter', branch: 'Mining', name: 'Laser Optics', desc: '+25% mining damage for every tool, per level.',
+    cost: [250, 700, 1900, 5000, 13000, 32000, 80000], effect: { miningMult: 0.25 }, requires: [] },
   { id: 'tractor', role: 'freighter', branch: 'Mining', name: 'Tractor Coils', desc: 'Unlocks the Tractor Coil part; every level pulls cubes from 40% further away.',
     cost: [400, 1500, 5000], effect: { magnetMult: 0.4 }, requires: [] },
   { id: 'refinery', role: 'freighter', branch: 'Mining', name: 'Onboard Refinery', desc: '+15% value from every cube, per level.',
@@ -374,10 +374,34 @@ export const UPGRADES = [
     cost: [900, 3000, 9000, 25000, 70000], effect: { fortify: 0.15 }, requires: ['alloys'] },
   { id: 'harmonics', role: 'fighter', branch: 'Defense', name: 'Shield Harmonics', desc: '+25% shield capacity and regen per level.',
     cost: [2500, 7000, 20000, 50000], effect: { shieldMult: 0.25 }, requires: ['shields'] },
+  // unlocked by reaching later planets (`planet`: 0-based index of the planet you must be on)
+  { id: 'graviton', role: 'freighter', branch: 'Mining', planet: 1, name: 'Graviton Optics', desc: '+30% mining damage per level. Bends the beam a little. Don’t ask.',
+    cost: [45000, 110000, 260000, 600000], effect: { miningMult: 0.3 }, requires: ['optics'] },
+  { id: 'markets', role: 'freighter', branch: 'Mining', planet: 1, name: 'Galactic Markets', desc: '+25% sell price per level. Whole planets sell well.',
+    cost: [40000, 100000, 240000, 560000], effect: { sellMult: 0.25 }, requires: ['brokers'] },
+  { id: 'flak', role: 'fighter', branch: 'Defense', planet: 1, name: 'Flak Doctrine', desc: '+25% weapon damage per level.',
+    cost: [35000, 90000, 220000, 520000], effect: { damageMult: 0.25 }, requires: ['ballistics'] },
+  { id: 'overclock', role: 'freighter', branch: 'Mining', planet: 2, name: 'Beam Overclock', desc: '+40% mining damage per level. Voids several warranties.',
+    cost: [350000, 900000, 2200000], effect: { miningMult: 0.4 }, requires: ['graviton'] },
+  { id: 'singularity', role: 'freighter', branch: 'Mining', planet: 2, name: 'Singularity Refinery', desc: '+35% value from every cube, per level.',
+    cost: [300000, 800000, 2000000], effect: { yieldMult: 0.35 }, requires: ['refinery'] },
+  { id: 'dreadnought', role: 'fighter', branch: 'Defense', planet: 2, name: 'Dreadnought Plating', desc: '+30% fighter part health per level.',
+    cost: [250000, 700000, 1800000], effect: { fortify: 0.3 }, requires: ['fortify'] },
+];
+
+// Legacy perks: bought with Legacy points from each mined planet. Permanent.
+// effect: multiplier per level (or `add` for additive stats like the autopilot window)
+export const LEGACY = [
+  { id: 'heirloom', name: 'Heirloom Optics', desc: '+15% mining damage per level.', cost: [1, 2, 3, 4, 5], mult: { miningMult: 0.15 } },
+  { id: 'dynasty', name: 'Dynasty Brokers', desc: '+15% sell price per level.', cost: [1, 2, 3, 4, 5], mult: { sellMult: 0.15 } },
+  { id: 'veterans', name: 'Veteran Gunners', desc: '+15% fighter weapon damage per level.', cost: [1, 2, 3, 4, 5], mult: { damageMult: 0.15 } },
+  { id: 'hardened', name: 'Hardened Hulls', desc: '+12% part health on both ships per level.', cost: [1, 2, 3, 4], mult: { hpMult: 0.12 } },
+  { id: 'medics', name: 'Repair Crews', desc: '-15% fighter repair time per level.', cost: [1, 2, 3], mult: { repairEff: -0.15 } },
+  { id: 'longhaul', name: 'Long Haul', desc: 'Your autopilot window starts one step longer, per level.', cost: [2, 4], add: { autopilot: 1 } },
+  { id: 'seed', name: 'Seed Money', desc: 'Start each new planet with extra credits, per level (scales with the planet).', cost: [1, 2, 3], startCredits: 6000 },
 ];
 
 
-// Pre-built ships. Cells are [part, x, y, rot] relative to grid center.
 // Pre-built ships. Cells are [part, x, y, rot]; x,y = top-left of the part's
 // footprint relative to the grid centre. role: which ship the preset is for.
 export const PRESETS = {
@@ -450,6 +474,17 @@ export const PRESETS = {
     ['turret', -3, 2, 0], ['armor', -2, 2, 0], ['turret', -1, 2, 0], ['armor', 0, 2, 0], ['turret', 1, 2, 0], ['armor', 2, 2, 0], ['turret', 3, 2, 0],
   ] },
 };
+
+// later freighters: the same hulls refitted with the deeper-cutting tools
+const swapTools = (cells, fn) => cells.flatMap((c) => fn(c) || [c]);
+PRESETS.cutter = { role: 'freighter', name: 'Cutter', desc: 'An Excavator refitted with plasma cutters for the Deep Mantle. 9×9, needs Plasma Cutting.',
+  cells: swapTools(PRESETS.excavator.cells, ([p, x, y, r]) => p === 'laser' ? [['plasmaCutter', x, y, r]] : null) };
+PRESETS.borer = { role: 'freighter', name: 'Core Borer', desc: 'A Leviathan with three deep bores and two plasma cutters: built for the core. 11×11, needs Deep Boring.',
+  cells: swapTools(PRESETS.leviathan.cells, ([p, x, y, r]) => {
+    if (p === 'laser') return [[Math.abs(x) === 2 ? 'plasmaCutter' : 'deepBore', x, y, r]];
+    if (y === -4 && (x === -4 || x === 0 || x === 4)) return [];
+    return null;
+  }) };
 
 // Fun text bits
 export const FLAVOR = {

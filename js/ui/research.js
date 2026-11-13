@@ -66,7 +66,7 @@ export function roadToCore(game) {
   const L = PLANETGEN.layers;
   return [
     { text: 'Mine cubes and bring them home (cargo sells itself at the starship)', done: s.stats.earned > 0 },
-    { text: 'Upgrade your freighter or fighter in the Shipyard / Research', done: Object.keys(s.upgrades).length > 0 || s.stats.partsBought > 0 },
+    { text: 'Upgrade your freighter or fighter in the Shipyard / Research', done: Object.keys(s.upgrades).some((k) => k !== '__legacy') || s.stats.partsBought > 0 },
     { text: `Strip the ${L[0].name} (${Math.round((1 - L[0].to ** 2) * 100)}% of the planet)`, done: at(L[0].to) },
     { text: 'Research Plasma Cutting and fit a Plasma Cutter', done: has('plasma') && tool(2) },
     { text: `Dig through the ${L[1].name}`, done: at(L[1].to) },

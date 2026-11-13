@@ -104,7 +104,7 @@ export class EnemySystem {
     return Math.pow(SWARM.planetScale, this.save.planet.index) * (1 + (SWARM.depthScale - 1) * depth);
   }
   scale() { return this.mult() * (1 + SWARM.scaleGrowth * this.shiftT / 60); }
-  ratePerMin() { return (SWARM.baseRate + SWARM.growth * this.shiftT / 60) * this.mult(); }
+  ratePerMin() { return (SWARM.baseRate + SWARM.growth * this.shiftT / 60) * this.mult() * (this.game.survival ? 3 : 1); }
   // how the swarm reads to the player
   threatLabel() {
     const m = this.shiftT / 60;
@@ -192,7 +192,8 @@ export class EnemySystem {
     if (e.type === 'missile') { this.game.sfx('pop'); return; }
     this.game.shake(e.boss ? 30 : Math.min(6, 1 + e.radius / 8));
     this.game.sfx(e.boss ? 'bigBoom' : 'explode', e.radius);
-    if (e.bounty) {
+    if (this.game.survival) this.game.survival.kills++;
+    if (e.bounty && !this.game.survival) {
       this.save.credits += e.bounty;
       this.save.stats.earned += e.bounty;
       w.floaters.add(e.x, e.y - e.radius, '+' + money(e.bounty), '#ffd60a', e.boss ? 26 : 13, -45, 1.2);

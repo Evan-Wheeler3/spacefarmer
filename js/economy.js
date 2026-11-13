@@ -1,5 +1,5 @@
 // Pure economy rules shared by the game and the headless bot.
-import { UPGRADES, PARTS, ORES, GRID, IDLE } from './data.js';
+import { UPGRADES, PARTS, ORES, GRID, IDLE, LEGACY } from './data.js';
 
 export const UPGRADE_BY_ID = Object.fromEntries(UPGRADES.map((u) => [u.id, u]));
 
@@ -20,8 +20,21 @@ export function upgradeEffects(levels = {}) {
   }
   // permanent legacy bonuses (prestige) ride along in levels.__legacy
   const L = levels.__legacy;
-  if (L) for (const k in L) if (k in fx) fx[k] = k === 'repairEff' ? fx[k] * L[k] : fx[k] * L[k];
+  if (L) for (const k in L) if (k in fx) fx[k] = ADDITIVE.has(k) ? fx[k] + L[k] : fx[k] * L[k];
   return fx;
+}
+const ADDITIVE = new Set(['frame', 'autopilot', 'fortify']);
+
+// legacy perk levels -> the multipliers/additions upgradeEffects applies
+export function legacyEffects(spent = {}) {
+  const out = {};
+  for (const p of LEGACY) {
+    const lv = spent[p.id] || 0;
+    if (!lv) continue;
+    for (const k in p.mult || {}) out[k] = (out[k] ?? 1) * Math.max(0.2, 1 + p.mult[k] * lv);
+    for (const k in p.add || {}) out[k] = (out[k] || 0) + p.add[k] * lv;
+  }
+  return out;
 }
 
 export function frameSize(levels) {
@@ -39,6 +52,7 @@ export function canBuyUpgrade(id, save) {
   const u = UPGRADE_BY_ID[id];
   const lv = save.upgrades[id] || 0;
   if (lv >= u.cost.length) return { ok: false, reason: 'Maxed', cost: 0 };
+  if (u.planet && (save.planet?.index || 0) < u.planet) return { ok: false, reason: `Unlocks on planet ${u.planet + 1}`, cost: u.cost[lv] };
   for (const r of u.requires) if (!(save.upgrades[r] > 0)) return { ok: false, reason: 'Requires ' + UPGRADE_BY_ID[r].name, cost: u.cost[lv] };
   const cost = u.cost[lv];
   if (save.credits < cost) return { ok: false, reason: 'Not enough credits', cost };

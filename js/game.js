@@ -288,7 +288,7 @@ export class Game {
     if (res && res.cubes > 0) {
       this.hangar.updateCredits();
       modal('Welcome back', el('div', {},
-        el('p', {}, `Your autopilot mined ${fmt(res.cubes)} cubes for `, el('span', { class: 'money' }, money(res.credits)), ` in the ${fmtTime(res.time)} its window allowed.`),
+        el('p', {}, `Your autopilot mined ${fmt(res.cubes)} cubes for `, el('span', { class: 'money' }, money(res.credits)), ` in the ${fmtTime(res.time)} its window allowed (at half speed while you’re away).`),
         res.time < away - 60 ? el('p', { class: 'dim' }, 'Research Autopilot Cores for a longer idle window.') : ''), [{ label: 'Nice', cls: 'primary' }]);
     }
   }
@@ -297,8 +297,9 @@ export class Game {
     const r = this.save.rates;
     const t = Math.min(away, idleWindow(this.levels));
     if (!r.cubesPerSec || !r.site || !this.world) return null;
+    if (this.save.fighter.repairT > 0) return null; // fighter was in the repair bay: nothing could be mined
     const pl = this.world.planet;
-    const n = Math.min(pl.remaining, Math.floor(r.cubesPerSec * t * 0.8));
+    const n = Math.min(pl.remaining, Math.floor(r.cubesPerSec * t * IDLE.offlineRate));
     let credits = 0;
     const fx = upgradeEffects(this.levels);
     pl.removeNearest(r.site[0], r.site[1], n, (mat) => { credits += ORES[mat].value * pl.valueMult; });

@@ -289,7 +289,8 @@ export const FIGHTER = {
 // for a limited window (upgradeable). Offline time counts against the window.
 export const IDLE = {
   delay: 5,               // seconds without input before the autopilot takes over
-  windows: [120, 300, 600, 1200, 2400, 4800, 9600, 14400], // window by Autopilot research level
+  windows: [60, 120, 240, 420, 600, 900, 1200, 1800], // window by Autopilot research level: 1 min .. 30 min
+  offlineRate: 0.5,       // offline time mines at this share of your measured autopilot rate (up to the window)
 };
 
 // Planet looks. The surface skin is paint only: underneath it's the same rock
@@ -346,8 +347,8 @@ export const UPGRADES = [
   { id: 'deepbore', role: 'freighter', branch: 'Mining', name: 'Deep Boring', desc: 'Unlocks the Deep Bore (tier 3): the Core needs it.',
     cost: [30000], effect: {}, requires: ['plasma'] },
   // Automation
-  { id: 'autopilot', role: 'freighter', branch: 'Automation', name: 'Autopilot Cores', desc: 'Longer idle window: 2 → 5 → 10 → 20 → 40 → 80 min → 2.7 h → 4 h. Offline time counts too.',
-    cost: [300, 800, 2000, 5000, 12000, 30000, 70000], effect: { autopilot: 1 }, requires: [] },
+  { id: 'autopilot', role: 'freighter', branch: 'Automation', name: 'Autopilot Cores', desc: 'Longer idle window: 1 → 2 → 4 → 7 → 10 → 15 → 20 → 30 min. Time away counts too, at half speed.',
+    cost: [400, 1500, 4500, 12000, 30000, 70000, 150000], effect: { autopilot: 1 }, requires: [] },
   { id: 'repairs', role: 'fighter', branch: 'Automation', name: 'Field Repairs', desc: '-15% fighter repair time per level.',
     cost: [600, 1800, 5000, 14000], effect: { repairEff: 0.15 }, requires: [] },
   // Engineering

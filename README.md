@@ -24,9 +24,9 @@ procedural and all audio is synthesized with WebAudio.
   Mantle, the Plasma Cutter (tier 2) the Deep Mantle, the Deep Bore (tier 3) the Core. A too-weak tool
   still chips at harder rock, at 4% speed. The surface (ocean, land, ice) is paint over the rock.
 - **Taking control isn't faster.** The autopilot flies the same physics as you do. It runs after 5 s
-  without input, for an idle window of 2 min at first, up to 4 h with Autopilot Cores. When the window
-  runs out it docks. Closing the game counts against the window: offline mining pays 80% of your
-  measured rate for min(time away, window).
+  without input, for an idle window of 1 min at first, up to 30 min with Autopilot Cores. When the window
+  runs out it docks. Closing the game counts against the window: offline mining pays 50% of your
+  measured rate for min(time away, window), and nothing while the fighter is in the repair bay.
 - **The freighter never takes damage.** The fighter does. It holds station ~2,400 units out on the
   space side of the freighter, so in the freighter view the battle is off-screen. An edge arrow shows
   where it is and its hull, and the top chip shows its status. Click the chip (or **V**) to watch it;

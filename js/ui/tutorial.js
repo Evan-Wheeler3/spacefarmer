@@ -4,13 +4,13 @@ import { ECONOMY } from '../data.js';
 import { TAU } from '../util.js';
 
 const STEPS = [
-  { where: 'flight', title: 'Fly', text: 'Hold W to thrust, A / D to turn. Your ship is built from parts — every thruster pushes the way it points.', touch: 'Drag your left thumb anywhere on the left side: the ship turns toward that direction and flies there. Every thruster pushes the way it points.', done: (g) => g.tut.moved > 180 },
-  { where: 'flight', title: 'Mine', text: 'Fly to a rock (marked) and hold SPACE. The laser fires from the front of your ship.', touch: 'Fly to the marked rock, point your nose at it and hold FIRE. The laser fires from the front of your ship.', done: (g) => g.ship.cargoUnits >= 2, target: 'rock' },
-  { where: 'flight', title: 'Collect', text: 'Ore chunks get pulled into your cargo pods. Grab about 15 — notice the ship gets heavier.', done: (g) => g.ship.cargoUnits >= Math.min(15, g.ship.cargoMax - 1), target: 'rock' },
-  { where: 'flight', title: 'Go home', text: 'Follow the cyan arrow to the OUTPOST and press F to dock (or hold R to recall).', touch: 'Follow the cyan arrow to the OUTPOST and tap DOCK when it appears (or hold ⟲ to recall).', done: (g) => g.state === 'hangar', target: 'station' },
-  { where: 'hangar', title: 'Sell', text: 'Sell your ore here in the Market. Credits buy parts and research.', done: (g) => (g.save.stats.earned || 0) > 0 },
-  { where: 'hangar', title: 'Build', text: 'Open the SHIPYARD. Add a Cargo Pod or a Mining Laser. Watch the stats: off-center thrust makes you spin.', done: (g) => (g.save.stats.partsBought || 0) > 0 || Object.keys(g.save.upgrades).length > 0 },
-  { where: 'hangar', title: 'Your fighter', touch: 'Your FIGHTER is a defense platform that works paid combat contracts on its own while you mine — see the ⚔ Fighter tab, or tap its status chip in flight to watch. Upgrade both ships with your earnings. LAUNCH when ready.', text: 'Your FIGHTER is a defense platform that works paid combat contracts on its own while you mine — see the ⚔ Fighter tab, or press V in flight to watch it. Upgrade both ships with your earnings. LAUNCH when ready.', done: (g) => g.state === 'flight' },
+  { where: 'flight', title: 'Fly', text: 'Hold W to thrust, A / D to turn. Your freighter is built from parts — every thruster pushes the way it points.', touch: 'Drag your left thumb anywhere on the left side: the freighter turns toward that direction and flies there.', done: (g) => g.tut.moved > 180 },
+  { where: 'flight', title: 'Mine the planet', text: 'Fly down to the planet (marked), point your nose at it and hold SPACE. Your laser rips cubes right out of it.', touch: 'Fly down to the planet (marked), point your nose at it and hold FIRE. Your laser rips cubes right out of it.', done: (g) => g.ship.cargoUnits >= 3, target: 'rock' },
+  { where: 'flight', title: 'Collect', text: 'Loose cubes get pulled into your cargo pods. Fill up a bit — the freighter gets heavier as it loads.', done: (g) => g.ship.cargoUnits >= Math.min(15, g.ship.cargoMax - 1), target: 'rock' },
+  { where: 'flight', title: 'Head home', text: 'Follow the cyan arrow back to your STARSHIP. Cargo is offloaded and sold automatically when you arrive.', done: (g) => g.save.stats.earned > 0, target: 'station' },
+  { where: 'flight', title: 'Your fighter', text: 'Your FIGHTER escorts you and fights the planet’s defense swarm. If it falls, both ships warp home and mining stops until it’s repaired. Press V (or tap its chip at the top) to watch it.', touch: 'Your FIGHTER escorts you and fights the planet’s defense swarm. If it falls, both ships warp home until it’s repaired. Tap its chip at the top to watch it.', done: (g) => g.tut.t > 14 },
+  { where: 'flight', title: 'Autopilot', text: 'Let go of the controls for a few seconds and the autopilot mines for you — for a limited window. Research Autopilot Cores to make it last longer. Dock with F to upgrade.', touch: 'Let go of the controls for a few seconds and the autopilot mines for you, for a limited window (Research makes it longer). Tap DOCK at the starship to upgrade.', done: (g) => g.state === 'hangar' },
+  { where: 'hangar', title: 'Upgrade', text: 'Spend credits in the Shipyard (two ships: ⛏ Freighter and ⚔ Fighter) and Research. Tap the planet chip in flight any time to see how much of it is gone. LAUNCH when ready.', done: (g) => g.state === 'flight' },
 ];
 
 export class Tutorial {
@@ -44,10 +44,12 @@ export class Tutorial {
   tick() {
     const g = this.game;
     if (!g.save || this.t.done) { this.remove(); return; }
+    if (g.state === 'flight' && g.ship) g.tut.t = (g.tut.t || 0) + 1 / 60;
     if (g.state === 'flight' && g.ship) g.tut.moved = Math.max(g.tut.moved, Math.hypot(g.ship.x - (this.spawnX || 0), g.ship.y - (this.spawnY || 0)));
     const st = STEPS[this.t.step];
     if (st && (st.where === 'flight' ? g.state === 'flight' : true) && st.done(g)) {
       this.t.step++;
+      g.tut.t = 0;
       g.sfx('click');
       if (this.t.step >= STEPS.length) { this.t.done = true; toast('Tutorial complete. Go make some money.', 'good', 3000); g.persist(); }
     }
@@ -60,9 +62,10 @@ export class Tutorial {
     if (!g.save || this.t.done || g.state !== 'flight') return;
     const st = STEPS[this.t.step];
     if (!st || st.target !== 'rock') return;
-    let best = null, bd = 1e18;
-    for (const r of g.world.rocks) { const d = (r.x - g.ship.x) ** 2 + (r.y - g.ship.y) ** 2; if (d < bd) { bd = d; best = r; } }
-    if (!best) return;
+    const pl = g.world.planet;
+    const sfc = pl.surfaceAt(Math.atan2(g.ship.y, g.ship.x));
+    if (!sfc) return;
+    const best = { x: sfc.x, y: sfc.y, r: 30 };
     const pulse = 1 + Math.sin(g.time * 5) * 0.08;
     ctx.strokeStyle = 'rgba(255,214,10,0.8)'; ctx.lineWidth = 3 / cam.zoom; ctx.setLineDash([10, 8]);
     ctx.beginPath(); ctx.arc(best.x, best.y, (best.r + 22) * pulse, 0, TAU); ctx.stroke(); ctx.setLineDash([]);

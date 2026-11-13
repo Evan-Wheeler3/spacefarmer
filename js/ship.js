@@ -303,7 +303,7 @@ export class Ship {
           const hit = world.raycast(ox, oy, dx, dy, d.laserRange);
           p.firing = hit ? hit.t : d.laserRange;
           p.beam = [ox, oy, dx, dy];
-          if (hit) world.laserHit(hit, d.mining * fx.miningMult * pf * dt, d.enemyDps * fx.damageMult * pf * dt, ox + dx * hit.t, oy + dy * hit.t, this);
+          if (hit) world.laserHit(hit, d.mining * fx.miningMult * pf * dt, (d.enemyDps || 0) * fx.damageMult * pf * dt, ox + dx * hit.t, oy + dy * hit.t, this, d.tier || 1);
         }
       }
       if (d.weapon) {

@@ -34,12 +34,38 @@ export const CAMERA = {
 // ---------------------------------------------------------------------
 // Ore
 // ---------------------------------------------------------------------
+// Planet materials. Every mined cube becomes one unit of cargo.
+// hp: laser damage to rip a cube out; tier: mining tool tier needed to cut it
+// at full speed (weaker tools only scratch it); value: credits per cube.
 export const ORES = {
-  ferrite: { name: 'Ferrite',      value: 4,   mass: 0.08, color: '#c9a27a', glow: '#ffb86b' },
-  cuprite: { name: 'Cuprite',      value: 11,  mass: 0.09, color: '#e0784a', glow: '#ff8a50' },
-  lumen:   { name: 'Lumen Crystal',value: 26,  mass: 0.06, color: '#7ff0ff', glow: '#9ffcff' },
-  void:    { name: 'Voidglass',    value: 62,  mass: 0.05, color: '#c08bff', glow: '#d9b3ff' },
-  core:    { name: 'Planet Core',  value: 400, mass: 0.04, color: '#ffe36b', glow: '#fff3a8' },
+  regolith: { name: 'Regolith',      hp: 5,   tier: 1, value: 1,   mass: 0.06, color: '#8a7f73', glow: '#c9b8a3' },
+  ferrite:  { name: 'Ferrite',       hp: 7,   tier: 1, value: 3,   mass: 0.08, color: '#c9a27a', glow: '#ffb86b' },
+  basalt:   { name: 'Basalt',        hp: 16,  tier: 1, value: 3,   mass: 0.09, color: '#4f4a52', glow: '#8b8494' },
+  cuprite:  { name: 'Cuprite',       hp: 22,  tier: 1, value: 8,   mass: 0.09, color: '#e0784a', glow: '#ff8a50' },
+  obsidian: { name: 'Obsidian',      hp: 60,  tier: 2, value: 10,  mass: 0.07, color: '#2a2238', glow: '#7b5cff' },
+  lumen:    { name: 'Lumen Crystal', hp: 75,  tier: 2, value: 28,  mass: 0.06, color: '#7ff0ff', glow: '#9ffcff' },
+  magmite:  { name: 'Magmite',       hp: 200, tier: 3, value: 35,  mass: 0.08, color: '#b8321e', glow: '#ff7a3d' },
+  void:     { name: 'Voidheart',     hp: 240, tier: 3, value: 90,  mass: 0.05, color: '#c08bff', glow: '#e0c2ff' },
+  core:     { name: 'Planet Core',   hp: 400, tier: 3, value: 400, mass: 0.04, color: '#ffe36b', glow: '#fff3a8' },
+};
+
+// The planet: a disc of cubes in layers. Deeper layers are harder and richer.
+export const PLANETGEN = {
+  cell: 16,                 // world px per cube
+  radius: 2000,             // first planet; later planets are `growth` times larger
+  growth: 1.25,
+  hpGrowth: 1.6, valueGrowth: 1.8,   // per later planet
+  surfaceNoise: 0.035,      // bumpiness of the surface
+  layers: [                 // `to`: inner edge as a fraction of the radius
+    { name: 'Crust',       to: 0.8, base: 'regolith', vein: 'ferrite', veinChance: 0.2 },
+    { name: 'Mantle',      to: 0.5, base: 'basalt',   vein: 'cuprite', veinChance: 0.17 },
+    { name: 'Deep Mantle', to: 0.2, base: 'obsidian', vein: 'lumen',   veinChance: 0.16 },
+    { name: 'Core',        to: 0,   base: 'magmite',  vein: 'void',    veinChance: 0.22 },
+  ],
+  starshipGap: 1300,        // distance from the surface to your starship
+  underTierDamage: 0.04,    // share of damage a too-weak tool still does
+  collapseAt: 0.995,        // past this, the remaining dust collapses and the planet is done
+  maxPickups: 320,
 };
 
 // ---------------------------------------------------------------------
@@ -112,8 +138,8 @@ export const PARTS = {
   },
   laser: {
     name: 'Mining Laser', cat: 'utility', role: 'freighter', w: 1, h: 1, mass: 1.6, cost: 90, hp: 40,
-    desc: 'Cuts rock along its facing. Also stings ships, mildly.',
-    mining: 13, laserRange: 170, enemyDps: 7, powerUse: 3, directional: true, muzzle: true, unlock: null,
+    desc: 'Tier 1 tool. Cuts rock along its facing; fine for the Crust and Mantle.',
+    mining: 13, tier: 1, laserRange: 170, enemyDps: 0, powerUse: 3, directional: true, muzzle: true, unlock: null,
   },
   turret: {
     name: 'Autocannon', cat: 'weapon', role: 'fighter', w: 1, h: 1, mass: 2, cost: 130, hp: 55,
@@ -131,10 +157,15 @@ export const PARTS = {
     desc: 'Projects a bubble that absorbs hits and recharges after a short sulk.',
     shield: 70, shieldRegen: 9, powerUse: 4, unlock: 'shields',
   },
-  cracker: {
-    name: 'Planet Cracker', cat: 'doomsday', role: 'fighter', w: 3, h: 3, mass: 45, cost: 80000, hp: 900,
-    desc: 'Hold [C] near a planet. Requires a lot of power, nerve, and paperwork.',
-    cracker: { chargeTime: 14, power: 28, range: 1300 }, directional: true, muzzle: true, unlock: 'cracker',
+  plasmaCutter: {
+    name: 'Plasma Cutter', cat: 'utility', role: 'freighter', w: 1, h: 1, mass: 2.4, cost: 900, hp: 50,
+    desc: 'Tier 2 tool. Cuts obsidian like warm butter — required to mine the Deep Mantle at full speed.',
+    mining: 34, tier: 2, laserRange: 190, enemyDps: 0, powerUse: 7, directional: true, muzzle: true, beam: '150,120,255', beamWidth: 11, unlock: 'plasma',
+  },
+  deepBore: {
+    name: 'Deep Bore', cat: 'utility', role: 'freighter', w: 1, h: 2, mass: 6, cost: 6500, hp: 120,
+    desc: 'Tier 3 tool. Argues with planetary cores and wins — required to mine the Core at full speed.',
+    mining: 110, tier: 3, laserRange: 220, enemyDps: 0, powerUse: 18, directional: true, muzzle: true, beam: '255,140,60', beamWidth: 15, unlock: 'deepbore',
   },
 };
 
@@ -146,71 +177,63 @@ export const GRID = { size: 31, frameSizes: [7, 9, 11, 13, 15, 17, 19, 21, 23, 2
 // Enemies. `ai` selects a behaviour in enemies.js.
 // ---------------------------------------------------------------------
 export const ENEMIES = {
-  gnat: {
-    cost: 1, threat: 1.6, // wave budget cost; est. damage/s it lands on an average pilot
-    name: 'Scrap Gnat', ai: 'orbit', hp: 22, radius: 11, speed: 260, accel: 380, turn: 5,
-    weapon: { damage: 4, rate: 1.1, speed: 420, range: 380 }, bounty: 5, color: '#ff5d73',
-    orbit: 200,
+  interceptor: {
+    cost: 1, threat: 1.6, unlockMin: 0, // wave budget cost; est. damage/s on a target that can't dodge; shift minute it appears
+    name: 'Interceptor', ai: 'orbit', hp: 22, radius: 11, speed: 270, accel: 380, turn: 5,
+    weapon: { damage: 4, rate: 1.1, speed: 440, range: 380 }, bounty: 3, color: '#ff5d73', orbit: 210,
   },
-  lancer: {
-    cost: 1.5, threat: 2.4, // wave budget cost; est. damage/s it lands on an average pilot
-    name: 'Repo Lancer', ai: 'ram', hp: 40, radius: 13, speed: 380, accel: 520, turn: 3.5,
-    ram: 22, bounty: 7, color: '#ff8c42',
+  raider: {
+    cost: 1.5, threat: 2.4, unlockMin: 0.75,
+    name: 'Raider', ai: 'ram', hp: 40, radius: 13, speed: 380, accel: 520, turn: 3.5,
+    ram: 22, bounty: 5, color: '#ff8c42',
   },
-  gunboat: {
-    cost: 3, threat: 5, // wave budget cost; est. damage/s it lands on an average pilot
-    name: 'Toll Collector', ai: 'standoff', hp: 110, radius: 18, speed: 170, accel: 220, turn: 2.5,
-    weapon: { damage: 9, rate: 0.6, speed: 520, range: 520, burst: 3, burstGap: 0.12 }, bounty: 18,
-    color: '#ffd23f', standoff: 380,
-  },
-  leech: {
-    cost: 2, threat: 1.5, // wave budget cost; est. damage/s it lands on an average pilot
-    name: 'Ore Leech', ai: 'leech', hp: 60, radius: 14, speed: 300, accel: 420, turn: 4,
-    steal: 3, bounty: 13, color: '#7bd389',
+  gunship: {
+    cost: 3, threat: 5, unlockMin: 2,
+    name: 'Gunship', ai: 'standoff', hp: 110, radius: 18, speed: 170, accel: 220, turn: 2.5,
+    weapon: { damage: 9, rate: 0.6, speed: 520, range: 520, burst: 3, burstGap: 0.12 }, bounty: 12, color: '#ffd23f', standoff: 380,
   },
   minelayer: {
-    cost: 4, threat: 2.2, // wave budget cost; est. damage/s it lands on an average pilot
-    name: 'Litterbug', ai: 'mines', hp: 140, radius: 20, speed: 150, accel: 180, turn: 2,
-    mine: { damage: 35, radius: 70, every: 2.2, life: 25 }, bounty: 23, color: '#c77dff',
+    cost: 4, threat: 2.2, unlockMin: 3.5,
+    name: 'Minelayer', ai: 'mines', hp: 140, radius: 20, speed: 150, accel: 180, turn: 2,
+    mine: { damage: 35, radius: 70, every: 2.2, life: 25 }, bounty: 16, color: '#c77dff',
   },
-  warden: {
-    cost: 6, threat: 4, // wave budget cost; est. damage/s it lands on an average pilot
-    name: 'Complaints Dept.', ai: 'missiles', hp: 260, radius: 22, speed: 160, accel: 200, turn: 2,
-    missile: { damage: 18, speed: 300, turn: 2.6, every: 2.6, life: 6 }, standoff: 450, bounty: 40,
-    color: '#5bc0eb',
+  frigate: {
+    cost: 6, threat: 4, unlockMin: 5,
+    name: 'Missile Frigate', ai: 'missiles', hp: 260, radius: 22, speed: 160, accel: 200, turn: 2,
+    missile: { damage: 18, speed: 300, turn: 2.6, every: 2.6, life: 6 }, standoff: 450, bounty: 26, color: '#5bc0eb',
   },
 };
 
-// Bosses: phases are attack lists the boss cycles through. Attack types
-// are implemented in enemies.js (spread, ring, spawn, charge, beam, missiles).
+// Elite capital ships turn up on a schedule during long shifts. Phases are attack
+// lists cycled by enemies.js (spread, ring, spawn, charge, beam, missiles).
 export const BOSSES = {
   grudge: {
-    name: 'Foreman Grudge', title: 'Disputes your mining rights', hp: 2000, radius: 60, speed: 90,
-    accel: 90, turn: 0.8, color: '#ff8c42', bounty: 1200, standoff: 340,
+    name: 'Warden-class Destroyer', title: 'Planetary defense picket', hp: 2000, radius: 60, speed: 90,
+    accel: 90, turn: 0.8, color: '#ff8c42', bounty: 600, standoff: 340,
     phases: [
       { until: 0.5, attacks: [{ type: 'spread', count: 5, arc: 0.7, damage: 6, speed: 380, every: 1.6 },
-                              { type: 'spawn', enemy: 'gnat', count: 2, every: 9 }] },
+                              { type: 'spawn', enemy: 'interceptor', count: 2, every: 9 }] },
       { until: 0, attacks: [{ type: 'ring', count: 14, damage: 6, speed: 300, every: 2.6 },
-                            { type: 'spawn', enemy: 'lancer', count: 2, every: 8 },
+                            { type: 'spawn', enemy: 'raider', count: 2, every: 8 },
                             { type: 'spread', count: 7, arc: 0.9, damage: 6, speed: 420, every: 2.1 }] },
     ],
   },
   auditor: {
-    name: 'The Auditor', title: 'Found some irregularities', hp: 7000, radius: 64, speed: 110,
-    accel: 110, turn: 1, color: '#ffd23f', bounty: 5000, standoff: 420,
+    name: 'Tribunal-class Cruiser', title: 'Heavy beam cruiser', hp: 7000, radius: 64, speed: 110,
+    accel: 110, turn: 1, color: '#ffd23f', bounty: 2400, standoff: 420,
     phases: [
       { until: 0.6, attacks: [{ type: 'beam', damage: 13, length: 700, sweep: 1.3, duration: 2.4, every: 6 },
-                              { type: 'spawn', enemy: 'gunboat', count: 1, every: 12 }] },
+                              { type: 'spawn', enemy: 'gunship', count: 1, every: 12 }] },
       { until: 0, attacks: [{ type: 'beam', damage: 15, length: 760, sweep: 1.8, duration: 2.6, every: 4.5 },
                             { type: 'ring', count: 18, damage: 9, speed: 340, every: 3 },
-                            { type: 'spawn', enemy: 'gnat', count: 3, every: 9 }] },
+                            { type: 'spawn', enemy: 'interceptor', count: 3, every: 9 }] },
     ],
   },
   matriarch: {
-    name: 'Matriarch Vexa', title: 'Owns this rock and all rocks like it', hp: 17000, radius: 70,
-    speed: 140, accel: 140, turn: 1.2, color: '#7bd389', bounty: 14000, standoff: 300,
+    name: 'Bastion-class Carrier', title: 'Launches strike craft in endless waves', hp: 17000, radius: 70,
+    speed: 140, accel: 140, turn: 1.2, color: '#7bd389', bounty: 7000, standoff: 300,
     phases: [
-      { until: 0.5, attacks: [{ type: 'spawn', enemy: 'leech', count: 3, every: 8 },
+      { until: 0.5, attacks: [{ type: 'spawn', enemy: 'raider', count: 3, every: 8 },
                               { type: 'ring', count: 20, damage: 12, speed: 320, every: 2.8 }] },
       { until: 0, attacks: [{ type: 'charge', damage: 35, speed: 620, every: 6 },
                             { type: 'spread', count: 9, arc: 1.2, damage: 12, speed: 460, every: 1.8 },
@@ -218,13 +241,13 @@ export const BOSSES = {
     ],
   },
   mildred: {
-    name: 'Dreadnought Mildred', title: 'Has been doing this since before you were a schematic',
-    hp: 42000, radius: 84, speed: 80, accel: 80, turn: 0.6, color: '#5bc0eb', bounty: 35000, standoff: 460,
+    name: 'Sovereign-class Battleship', title: 'The planet would like a word',
+    hp: 42000, radius: 84, speed: 80, accel: 80, turn: 0.6, color: '#5bc0eb', bounty: 18000, standoff: 460,
     phases: [
       { until: 0.66, attacks: [{ type: 'missiles', count: 4, damage: 22, speed: 320, turn: 2.4, every: 4 },
                                { type: 'spread', count: 7, arc: 0.8, damage: 16, speed: 500, every: 2 }] },
       { until: 0.33, attacks: [{ type: 'beam', damage: 22, length: 900, sweep: 2.2, duration: 3, every: 6 },
-                               { type: 'spawn', enemy: 'warden', count: 1, every: 15 },
+                               { type: 'spawn', enemy: 'frigate', count: 1, every: 15 },
                                { type: 'ring', count: 24, damage: 14, speed: 360, every: 3.2 }] },
       { until: 0, attacks: [{ type: 'missiles', count: 6, damage: 22, speed: 360, turn: 2.8, every: 3.2 },
                             { type: 'charge', damage: 50, speed: 700, every: 7 },
@@ -233,92 +256,50 @@ export const BOSSES = {
   },
 };
 
-// ---------------------------------------------------------------------
-// Sectors. Each is a separate jump destination with its own outpost.
-// ---------------------------------------------------------------------
-export const SECTORS = [
-  {
-    id: 'shallows', name: 'The Shallows', blurb: 'Gentle rocks, gentle pirates. A fine place to make mistakes.',
-    radius: 3600, asteroids: 120, hardness: 1, ores: { ferrite: 1 }, enemyScale: 1,
-    enemies: ['gnat', 'lancer'], contracts: 6, waveBudget: 3, waveGrowth: 1.2, contractPay: 40,
-    boss: 'grudge', bg: ['#0a0f24', '#1b1140'], license: null,
-  },
-  {
-    id: 'rust', name: 'Rust Belt', blurb: 'Industrial leftovers and the people who left them.',
-    radius: 4000, asteroids: 140, hardness: 1.8, ores: { ferrite: 0.45, cuprite: 0.55 }, enemyScale: 1.5,
-    enemies: ['gnat', 'lancer', 'gunboat', 'leech'], contracts: 6, waveBudget: 7, waveGrowth: 2, contractPay: 110,
-    boss: 'auditor', bg: ['#160b0b', '#3a1a12'], license: 'licRust',
-  },
-  {
-    id: 'glass', name: 'Glass Reach', blurb: 'Crystal fields that sing when lasered. Locals find this territorial.',
-    radius: 4400, asteroids: 150, hardness: 3, ores: { cuprite: 0.3, lumen: 0.7 }, enemyScale: 2.4,
-    enemies: ['gnat', 'gunboat', 'leech', 'minelayer', 'lancer'], contracts: 6, waveBudget: 14, waveGrowth: 3.5, contractPay: 270,
-    boss: 'matriarch', bg: ['#04141c', '#0b3a4a'], license: 'licGlass',
-  },
-  {
-    id: 'pale', name: 'The Deep Pale', blurb: 'Quiet, cold, and full of things that dislike quiet and cold.',
-    radius: 4800, asteroids: 160, hardness: 4.6, ores: { lumen: 0.4, void: 0.6 }, enemyScale: 3.6,
-    enemies: ['gunboat', 'leech', 'minelayer', 'warden', 'lancer'], contracts: 6, waveBudget: 26, waveGrowth: 6, contractPay: 650,
-    boss: 'mildred', bg: ['#0c0c14', '#2b2340'], license: 'licPale',
-  },
-  {
-    id: 'gorvox', name: 'Gorvox System', blurb: 'Home of Gorvox IV, a planet nobody will miss. Probably.',
-    radius: 5200, asteroids: 130, hardness: 5.5, ores: { void: 1 }, enemyScale: 4.5,
-    enemies: ['gunboat', 'warden', 'minelayer', 'lancer', 'gnat'], contracts: 8, waveBudget: 45, waveGrowth: 9, contractPay: 1500,
-    boss: null, planet: true, bg: ['#160812', '#40142a'], license: 'licGorvox',
-  },
-];
-
-// Combat contracts: the player starts each wave (G / HUD button). Wave k (0-based)
-// has budget waveBudget + waveGrowth*k and pays contractPay * payGrowth^k.
-// After the last wave the sector boss can be challenged. Finished boards can be
-// re-run for farming at repeatPay of the original fee.
-export const CONTRACTS = {
-  payGrowth: 1.3,
-  repeatPay: 0.6,
-  // light ambient pirates while mining (outside the outpost safe zone)
-  ambientEvery: [110, 170],  // seconds between ambient visits
-  ambientFirst: 150,         // grace period after launch
-  ambientBudget: 1.5,        // only the cheapest enemies of the sector, 1-2 ships
+// The planet's defense swarm. It starts the moment you launch and escalates
+// the longer you stay; it resets whenever you dock or your fighter falls.
+export const SWARM = {
+  spawnEvery: 4,          // seconds between spawn checks
+  baseRate: 2.0,          // budget per minute at the start of a shift
+  growth: 1.5,            // extra budget per minute, per minute of shift
+  scaleGrowth: 0.06,      // enemy health/damage +6% per minute of shift
+  depthScale: 1.5,        // at the core, rate and toughness are this much higher
+  planetScale: 1.7,       // each later planet's swarm is this much tougher
+  maxAlive: 45,
+  spawnDist: [1100, 1400],
+  eliteFirst: 240, eliteEvery: 240,  // seconds into a shift
+  eliteOrder: ['grudge', 'auditor', 'matriarch', 'mildred'],
+  eliteScaleGrowth: 0.35, // each repeat of the elite cycle is this much tougher
 };
 
-// The fighter: a stationary defense platform that works contracts on its own.
+// Your fighter escorts the freighter. When it falls, both warp home and all
+// mining stops until repairs finish.
 export const FIGHTER = {
-  breather: 10,           // seconds between waves
-  repairTime: 15,         // seconds in the repair bay after a retreat
+  escortDist: 230,        // how far it holds station from the freighter (on the space side)
+  repairBase: 20,         // seconds in the repair bay, plus...
+  repairPerDamage: 100,   // ...this many seconds at 100% damage
+  repairDiscount: 0.4,    // repairs cost this share of the normal price
+  rushPerSecond: 4,       // credits per remaining second to rush repairs (scales with planet)
   retreatDefault: 0.3,    // retreat when hull falls below this share (player adjustable)
   coreRetreat: 0.4,       // ...or when the Command Core itself drops below this
-  failsBeforePatrol: 2,   // retreats on the same contract before it falls back to patrolling a cleared wave
-  offlineBreather: 12,    // seconds per contract added when resolving offline time
-  offlineRate: 0.5,       // contracts resolved while the game is closed pay this share
-  repairDiscount: 0.4,    // fighter repairs cost this share of the normal price (the post has its own crews)
 };
 
-export const ASTEROIDS = {
-  minRadius: 18, maxRadius: 78,
-  hpPerArea: 0.018,          // hp = pi r^2 * this * hardness
-  orePerHp: 0.1,             // ore units dropped per point of mining damage (before hardness)
-  chunkEvery: 1,             // drop a chunk each time this many ore accumulate
-  splitMinRadius: 30,        // rocks bigger than this split into two when destroyed
-  respawnDelay: 6,           // seconds between respawns when below target count
-  innerClear: 650,           // no rocks this close to the outpost
-  pickupLife: 40,
+// Autopilot: the freighter mines on its own after a few seconds without input,
+// for a limited window (upgradeable). Offline time counts against the window.
+export const IDLE = {
+  delay: 5,               // seconds without input before the autopilot takes over
+  windows: [120, 300, 600, 1200, 2400, 4800, 9600, 14400], // window by Autopilot research level
 };
 
-// ---------------------------------------------------------------------
-// Planets (endgame)
-// ---------------------------------------------------------------------
-export const PLANETS = {
-  names: ['Gorvox IV', 'Gorvox V (Spite)', 'New Gorvox', 'Gorvox Prime Deluxe', 'Gorvox Again'],
-  radius: 520, postGap: 900,          // distance from the fighter post to the planet's surface
-  baseReward: 250000, rewardGrowth: 1.6,   // credits for each successive planet
-  coreDrops: 120, coreSalvage: 0.5,        // Planet Core chunks flung out; salvage crews recover this share
-  defenseWaveEvery: 7, defenseBudget: 8,   // waves while the cracker charges
-};
+export const PLANET_THEMES = [
+  { name: 'Kessar Prime', bg: ['#0a0f24', '#1b1140'] },
+  { name: 'Vorn', bg: ['#160b0b', '#3a1a12'] },
+  { name: 'Oruleth', bg: ['#04141c', '#0b3a4a'] },
+  { name: 'Hallow', bg: ['#0c0c14', '#2b2340'] },
+  { name: 'Gorvox', bg: ['#160812', '#40142a'] },
+];
+export const MAIN_PLANETS = 3;  // finishing this many planets completes the main game
 
-// ---------------------------------------------------------------------
-// Economy
-// ---------------------------------------------------------------------
 export const ECONOMY = {
   startCredits: 150,
   refuelCostPerUnit: 0.05,
@@ -337,56 +318,48 @@ export const ECONOMY = {
 // effect keys are read by economy.js -> upgradeEffects().
 // ---------------------------------------------------------------------
 export const UPGRADES = [
-  // Industry
-  { id: 'brokers', role: 'freighter',  branch: 'Industry', name: 'Ore Brokers', desc: '+12% sell price per level. They know a guy.',
-    cost: [220, 600, 1500, 3800, 9000], effect: { sellMult: 0.12 }, requires: [] },
-  { id: 'optics', role: 'freighter',   branch: 'Industry', name: 'Laser Optics', desc: '+20% mining damage per level.',
-    cost: [300, 900, 2400, 6500, 16000], effect: { miningMult: 0.2 }, requires: [] },
-  { id: 'tractor', role: 'freighter',  branch: 'Industry', name: 'Tractor Coils', desc: 'Unlocks the Tractor Coil part; every level pulls ore from 40% further away.',
-    cost: [700, 2500, 8000], effect: { magnetMult: 0.4 }, requires: ['brokers'] },
-  { id: 'refinery', role: 'freighter', branch: 'Industry', name: 'Onboard Refinery', desc: '+15% ore per rock per level.',
-    cost: [1200, 3500, 9000, 22000], effect: { yieldMult: 0.15 }, requires: ['optics'] },
-
+  // Mining (freighter)
+  { id: 'brokers', role: 'freighter', branch: 'Mining', name: 'Ore Brokers', desc: '+12% sell price per level. They know a guy.',
+    cost: [150, 450, 1200, 3200, 8000, 20000], effect: { sellMult: 0.12 }, requires: [] },
+  { id: 'optics', role: 'freighter', branch: 'Mining', name: 'Laser Optics', desc: '+20% mining damage for every tool, per level.',
+    cost: [250, 700, 1900, 5000, 13000, 32000, 80000], effect: { miningMult: 0.2 }, requires: [] },
+  { id: 'tractor', role: 'freighter', branch: 'Mining', name: 'Tractor Coils', desc: 'Unlocks the Tractor Coil part; every level pulls cubes from 40% further away.',
+    cost: [400, 1500, 5000], effect: { magnetMult: 0.4 }, requires: [] },
+  { id: 'refinery', role: 'freighter', branch: 'Mining', name: 'Onboard Refinery', desc: '+15% value from every cube, per level.',
+    cost: [900, 2600, 7000, 18000, 45000], effect: { yieldMult: 0.15 }, requires: ['brokers'] },
+  { id: 'plasma', role: 'freighter', branch: 'Mining', name: 'Plasma Cutting', desc: 'Unlocks the Plasma Cutter (tier 2): the Deep Mantle needs it.',
+    cost: [3500], effect: {}, requires: ['optics'] },
+  { id: 'deepbore', role: 'freighter', branch: 'Mining', name: 'Deep Boring', desc: 'Unlocks the Deep Bore (tier 3): the Core needs it.',
+    cost: [30000], effect: {}, requires: ['plasma'] },
+  // Automation
+  { id: 'autopilot', role: 'freighter', branch: 'Automation', name: 'Autopilot Cores', desc: 'Longer idle window: 2 → 5 → 10 → 20 → 40 → 80 min → 2.7 h → 4 h. Offline time counts too.',
+    cost: [300, 800, 2000, 5000, 12000, 30000, 70000], effect: { autopilot: 1 }, requires: [] },
+  { id: 'repairs', role: 'fighter', branch: 'Automation', name: 'Field Repairs', desc: '-15% fighter repair time per level.',
+    cost: [600, 1800, 5000, 14000], effect: { repairEff: 0.15 }, requires: [] },
   // Engineering
-  { id: 'frame', role: 'both',    branch: 'Engineering', name: 'Frame Extension', desc: 'Build area +2 per level, from 7×7 up to 31×31. Big ships turn slowly; physics is undefeated.',
+  { id: 'frame', role: 'both', branch: 'Engineering', name: 'Frame Extension', desc: 'Build area +2 per level, from 7×7 up to 31×31. Big ships turn slowly; physics is undefeated.',
     cost: [500, 4000, 20000, 50000, 110000, 230000, 450000, 850000, 1500000, 2600000, 4400000, 7500000], effect: { frame: 1 }, requires: [] },
-  { id: 'alloys', role: 'both',   branch: 'Engineering', name: 'Better Alloys', desc: '+15% part health per level.',
+  { id: 'alloys', role: 'both', branch: 'Engineering', name: 'Better Alloys', desc: '+15% part health per level.',
     cost: [400, 1200, 3500, 10000], effect: { hpMult: 0.15 }, requires: [] },
   { id: 'injectors', role: 'freighter', branch: 'Engineering', name: 'Fuel Injectors', desc: '-12% thruster fuel use per level.',
     cost: [350, 1100, 3200], effect: { fuelEff: 0.12 }, requires: [] },
-  { id: 'torch', role: 'freighter',    branch: 'Engineering', name: 'Torch Drives', desc: 'Unlocks the Torch Drive heavy thruster.',
+  { id: 'torch', role: 'freighter', branch: 'Engineering', name: 'Torch Drives', desc: 'Unlocks the Torch Drive heavy thruster.',
     cost: [2200], effect: {}, requires: ['injectors'] },
-  { id: 'fusion', role: 'both',   branch: 'Engineering', name: 'Fusion Licensing', desc: 'Unlocks the Fusion Reactor.',
+  { id: 'fusion', role: 'both', branch: 'Engineering', name: 'Fusion Licensing', desc: 'Unlocks the Fusion Reactor.',
     cost: [6000], effect: {}, requires: ['alloys'] },
-  // Arsenal
-  { id: 'ballistics', role: 'fighter', branch: 'Arsenal', name: 'Ballistics', desc: '+18% weapon damage per level.',
-    cost: [350, 1000, 3000, 8500, 22000], effect: { damageMult: 0.18 }, requires: [] },
-  { id: 'loaders', role: 'fighter',  branch: 'Arsenal', name: 'Auto-Loaders', desc: '+12% fire rate per level.',
-    cost: [600, 2000, 6000, 16000], effect: { rateMult: 0.12 }, requires: ['ballistics'] },
-  { id: 'shields', role: 'fighter',  branch: 'Arsenal', name: 'Shield Theory', desc: 'Unlocks the Shield Emitter.',
+  // Defense (fighter)
+  { id: 'ballistics', role: 'fighter', branch: 'Defense', name: 'Ballistics', desc: '+18% weapon damage per level.',
+    cost: [350, 1000, 3000, 8500, 22000, 55000], effect: { damageMult: 0.18 }, requires: [] },
+  { id: 'loaders', role: 'fighter', branch: 'Defense', name: 'Auto-Loaders', desc: '+12% fire rate per level.',
+    cost: [600, 2000, 6000, 16000, 40000], effect: { rateMult: 0.12 }, requires: ['ballistics'] },
+  { id: 'shields', role: 'fighter', branch: 'Defense', name: 'Shield Theory', desc: 'Unlocks the Shield Emitter.',
     cost: [1400], effect: {}, requires: [] },
-  { id: 'railgun', role: 'fighter',  branch: 'Arsenal', name: 'Railgun Permit', desc: 'Unlocks the Railgun. The permit is mostly a formality.',
+  { id: 'railgun', role: 'fighter', branch: 'Defense', name: 'Railgun Permit', desc: 'Unlocks the Railgun. The permit is mostly a formality.',
     cost: [3000], effect: {}, requires: ['ballistics'] },
-  { id: 'fortify', role: 'fighter',  branch: 'Arsenal', name: 'Fortification', desc: '+15% fighter part health per level. The platform digs in.',
+  { id: 'fortify', role: 'fighter', branch: 'Defense', name: 'Fortification', desc: '+15% fighter part health per level.',
     cost: [900, 3000, 9000, 25000, 70000], effect: { fortify: 0.15 }, requires: ['alloys'] },
-  { id: 'harmonics', role: 'fighter', branch: 'Arsenal', name: 'Shield Harmonics', desc: '+25% shield capacity and regen per level.',
-    cost: [2500, 7000, 20000], effect: { shieldMult: 0.25 }, requires: ['shields'] },
-  // Licenses (jump access). requiresBoss: you must defeat that sector's boss first.
-  { id: 'licRust', role: 'both',  branch: 'Licenses', name: 'Rust Belt License', desc: 'Jump access to the Rust Belt.',
-    cost: [900], effect: {}, requires: [], requiresBoss: 'grudge' },
-  { id: 'licGlass', role: 'both', branch: 'Licenses', name: 'Glass Reach License', desc: 'Jump access to the Glass Reach.',
-    cost: [8000], effect: {}, requires: ['licRust'], requiresBoss: 'auditor' },
-  { id: 'licPale', role: 'both',  branch: 'Licenses', name: 'Deep Pale License', desc: 'Jump access to the Deep Pale.',
-    cost: [40000], effect: {}, requires: ['licGlass'], requiresBoss: 'matriarch' },
-  { id: 'licGorvox', role: 'both', branch: 'Licenses', name: 'Gorvox Clearance', desc: 'Jump access to the Gorvox System. Nobody asks why.',
-    cost: [100000], effect: {}, requires: ['licPale'], requiresBoss: 'mildred' },
-  // Doomsday
-  { id: 'cracker', role: 'fighter',  branch: 'Doomsday', name: 'Planet Cracker Schematics', desc: 'Unlocks the Planet Cracker. It is exactly what it sounds like.',
-    cost: [40000], effect: {}, requires: ['licPale', 'fusion'] },
-  { id: 'capacitors', role: 'fighter', branch: 'Doomsday', name: 'Cracker Capacitors', desc: '-15% cracker charge time per level.',
-    cost: [30000, 70000], effect: { chargeEff: 0.15 }, requires: ['cracker'] },
-  { id: 'salvage', role: 'fighter',  branch: 'Doomsday', name: 'Planetary Salvage', desc: '+30% planet destruction reward per level.',
-    cost: [50000, 120000], effect: { planetMult: 0.3 }, requires: ['cracker'] },
+  { id: 'harmonics', role: 'fighter', branch: 'Defense', name: 'Shield Harmonics', desc: '+25% shield capacity and regen per level.',
+    cost: [2500, 7000, 20000, 50000], effect: { shieldMult: 0.25 }, requires: ['shields'] },
 ];
 
 
@@ -454,8 +427,8 @@ export const PRESETS = {
     ['turret', -3, 1, 0], ['armor', -2, 1, 0], ['shield', -1, 1, 0], ['battery', 0, 1, 0], ['shield', 1, 1, 0], ['armor', 2, 1, 0], ['turret', 3, 1, 0],
     ['turret', -2, 2, 0], ['armor', -1, 2, 0], ['turret', 0, 2, 0], ['armor', 1, 2, 0], ['turret', 2, 2, 0],
   ] },
-  doom: { role: 'fighter', name: 'Doomsday Bastion', desc: 'Built for one job. The job is a planet. 11×11.', cells: [
-    ['cracker', -1, -5, 0], ['turret', -2, -3, 0], ['turret', 2, -3, 0],
+  fortress: { role: 'fighter', name: 'Fortress', desc: 'Triple railgun battery, fusion power, shields on every side. 11×11.', cells: [
+    ['railgun', -1, -5, 0], ['railgun', 0, -5, 0], ['railgun', 1, -5, 0], ['armor', -1, -3, 0], ['armor', 0, -3, 0], ['armor', 1, -3, 0], ['turret', -2, -3, 0], ['turret', 2, -3, 0],
     ['turret', -3, -2, 0], ['shield', -2, -2, 0], ['armor', -1, -2, 0], ['gyro', 0, -2, 0], ['armor', 1, -2, 0], ['shield', 2, -2, 0], ['turret', 3, -2, 0],
     ['fusion', -4, -1, 0], ['battery', -2, -1, 0], ['battery', -1, -1, 0], ['shield', 0, -1, 0], ['battery', 1, -1, 0], ['battery', 2, -1, 0], ['fusion', 3, -1, 0],
     ['gyro', -2, 0, 0], ['gyro', -1, 0, 0], ['core', 0, 0, 0], ['gyro', 1, 0, 0], ['gyro', 2, 0, 0],

@@ -128,6 +128,23 @@ export function drawPart(g, id, cx, cy, s, rot = 0, opts = {}) {
       g.fillStyle = '#fff'; g.beginPath(); g.arc(0, y + pad + u * 2, u * 1.5, 0, TAU); g.fill();
       break;
     }
+    case 'plasmaCutter': {
+      g.fillRect(-u * 3, y + pad, u * 6, s * 0.5);
+      g.beginPath(); g.arc(0, s * 0.12, s * 0.24, 0, TAU); g.stroke();
+      g.fillStyle = '#b9a4ff'; g.beginPath(); g.arc(0, y + pad + u * 2, u * 2.2, 0, TAU); g.fill();
+      g.strokeStyle = '#b9a4ff'; g.beginPath(); g.moveTo(-s * 0.2, s * 0.25); g.lineTo(s * 0.2, s * 0.25); g.stroke();
+      break;
+    }
+    case 'deepBore': {
+      // drill head up front, motor housing behind
+      g.beginPath(); g.moveTo(0, y + pad); g.lineTo(W * 0.32, y + H * 0.3); g.lineTo(-W * 0.32, y + H * 0.3); g.closePath(); g.fill();
+      g.strokeStyle = '#1a1a1a'; g.lineWidth = u;
+      for (let k = 1; k < 4; k++) { g.beginPath(); g.moveTo(-W * 0.08 * k, y + pad + k * H * 0.07); g.lineTo(W * 0.08 * k, y + pad + k * H * 0.07); g.stroke(); }
+      g.strokeStyle = col; g.lineWidth = Math.max(1, s * 0.06);
+      g.strokeRect(-W * 0.3, y + H * 0.38, W * 0.6, H * 0.5);
+      g.fillStyle = '#ff8c3c'; g.beginPath(); g.arc(0, y + H * 0.63, W * 0.12, 0, TAU); g.fill();
+      break;
+    }
     case 'turret': {
       g.beginPath(); g.arc(0, 0, s * 0.3, 0, TAU); g.stroke();
       g.beginPath(); g.arc(0, 0, s * 0.16, 0, TAU); g.globalAlpha *= 0.6; g.fill();
@@ -208,7 +225,7 @@ export function shipSprite(ship) {
 }
 
 // Draw a ship in world space (ctx already in camera transform)
-export function drawShip(ctx, ship, time) {
+export function drawShip(ctx, ship, time, skin = null) {
   const C = PHYS.CELL;
   const spr = shipSprite(ship);
   const off = ship._spriteOff;

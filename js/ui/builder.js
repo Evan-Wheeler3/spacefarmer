@@ -1,9 +1,7 @@
 // Shipyard: grid builder wired to the real physics analysis.
-import { PARTS, GRID, PHYS, PRESETS, ORES, SECTORS } from '../data.js';
+import { PARTS, GRID, PHYS, PRESETS, ORES, PLANETGEN } from '../data.js';
 import { Design, analyze, footprint, entryCells, entryCenter, inFrame, edgeCells } from '../shipdesign.js';
-import { frameSize, partUnlocked, UPGRADE_BY_ID, oreFromDamage, partFits } from '../economy.js';
-import { rate } from '../contracts.js';
-import { nextContract, bossThreat } from '../contracts.js';
+import { frameSize, partUnlocked, UPGRADE_BY_ID, partFits } from '../economy.js';
 import { drawPart, CAT_COLORS } from '../render.js';
 import { el, toast, modal, popEl } from './dom.js';
 import { TAU, DIRS, easeOutBack, money, fmt, rand, hexA, clamp } from '../util.js';
@@ -48,7 +46,7 @@ export class Builder {
   }
 
   mount(container) {
-    if (this.role === 'fighter') this.game.fighter.stash();
+    if (this.role === 'fighter') this.game.escort.stash();
     this.design = Design.fromJSON(this.src);
     this.frame = frameSize(this.save.upgrades);
     this.zoomHalf = null;
@@ -72,7 +70,7 @@ export class Builder {
     this.btnForces = tb('➚ Forces', 'Show thrust vectors and center of mass', () => { this.showForces = !this.showForces; this.btnForces.classList.toggle('on', this.showForces); }, 'on');
     const sw = el('div', { class: 'ship-switch' },
       el('button', { class: 'btn small' + (this.role === 'freighter' ? ' on' : ''), title: 'The ship you fly: mining and hauling', onclick: () => this.setRole('freighter') }, '⛏ Freighter'),
-      el('button', { class: 'btn small' + (this.role === 'fighter' ? ' on' : ''), title: 'Your stationary defense platform: works contracts on its own', onclick: () => this.setRole('fighter') }, '⚔ Fighter'));
+      el('button', { class: 'btn small' + (this.role === 'fighter' ? ' on' : ''), title: 'Your escort: defends the freighter from the planet’s swarm', onclick: () => this.setRole('fighter') }, '⚔ Fighter'));
     const toolbar = el('div', { class: 'b-toolbar' }, sw,
       ...Object.values(this.toolBtns),
       this.btnUndo, this.btnRedo,
@@ -526,8 +524,14 @@ export class Builder {
     this.analysis = analyze(this.design, this.save.upgrades, { role: this.role });
     const a = this.analysis;
     const fighter = this.role === 'fighter';
-    const sector = SECTORS[fighter ? this.save.fighter.sector : this.save.sector] || SECTORS[0];
-    const oreRate = oreFromDamage(a.mining, sector.hardness, this.save.upgrades);
+    // cut speed by layer, accounting for tool tiers
+    const pl = this.game.world && this.game.world.planet;
+    const tools = this.design.entries.filter((e, i) => PARTS[e.part].mining && !a.bad.has(i)).map((e) => PARTS[e.part]);
+    const cut = (mat) => {
+      const o = ORES[mat];
+      const dmg = tools.reduce((t, p) => t + p.mining * (p.tier >= o.tier ? 1 : PLANETGEN.underTierDamage), 0) * (a.mining / Math.max(1e-6, tools.reduce((t, p) => t + p.mining, 0)) || 0);
+      return dmg / (o.hp * (pl ? pl.hpMult : 1));
+    };
     const row = (k, v, cls = '', bar = null) => el('div', { class: 's-row' }, el('span', { class: 'dim' }, k), el('span', { class: cls }, v),
       bar ? el('div', { class: 's-bar' }, el('i', { style: { width: clamp(bar[0], 0, 1) * 100 + '%', background: bar[1] } })) : '');
     const powerOk = a.gen >= a.peakDraw;
@@ -536,8 +540,6 @@ export class Builder {
       el('div', { class: 's-warns' }, a.warnings.length ? a.warnings.map((w) => el('div', { class: 'w-' + w.lvl }, (w.lvl === 'err' ? '✖ ' : w.lvl === 'warn' ? '⚠ ' : 'ℹ ') + w.text)) : el('div', { class: 'w-ok' }, '✔ All systems nominal. Suspiciously so.'))];
     this.stats.innerHTML = '';
     if (fighter) {
-      const n = nextContract(this.save, this.save.fighter.sector);
-      const r = n ? rate(a, n.kind === 'boss' ? n.foe : n.wave) : null;
       this.stats.append(
         el('div', { class: 's-head' }, 'DEFENSE PLATFORM'),
         row('Weapons', `${a.dps.toFixed(0)} dps`, a.dps > 0 ? 'good' : 'bad'),
@@ -546,8 +548,6 @@ export class Builder {
         row('Aim (90° turn)', isFinite(a.turn90) ? `${a.turn90.toFixed(2)} s` : '—', '', [1 - a.turn90 / 3, '#ff9f1c']),
         power, row('Battery', `${a.battery}`),
         row('Ship value', money(a.value), 'money'),
-        r ? el('div', { class: 's-head' }, `NEXT: ${sector.name.toUpperCase()}`) : '',
-        r ? row(n.kind === 'boss' ? 'Boss' : `Contract ${n.k + 1}/${n.total}`, r.label, '', [1 - Math.min(1, r.risk), r.color]) : '',
         ...diag);
     } else {
       this.stats.append(
@@ -562,7 +562,8 @@ export class Builder {
         power, row('Battery', `${a.battery}`),
         row('Fuel', `${a.fuel}  (${isFinite(a.endurance) ? Math.round(a.endurance) + 's full burn' : '—'})`),
         row('Cargo', `${a.cargo} ore`),
-        row('Mining', `${oreRate.toFixed(2)} ore/s here`),
+        el('div', { class: 's-head' }, 'CUT SPEED (cubes/s)'),
+        ...PLANETGEN.layers.map((L) => row(`${L.name} (${ORES[L.base].name})`, cut(L.base).toFixed(2), ORES[L.base].tier > Math.max(0, ...tools.map((p) => p.tier || 1)) ? 'bad' : '')),
         row('Ore magnet', `${Math.round(a.magnet)} px`),
         row('Hull', `${Math.round(a.hp)} hp`),
         row('Ship value', money(a.value), 'money'),

@@ -1,8 +1,9 @@
 // Persistent progress in localStorage.
 import { ECONOMY, PRESETS, VERSION } from './data.js';
 
-const KEY = 'spacefarmer.save.v1';
-export const SANDBOX_KEY = 'spacefarmer.sandbox.v1';
+const KEY = 'spacefarmer.save.v2';
+const OLD_KEY = 'spacefarmer.save.v1';
+export const SANDBOX_KEY = 'spacefarmer.sandbox.v2';
 
 export function newSave() {
   return {
@@ -10,31 +11,41 @@ export function newSave() {
     credits: ECONOMY.startCredits,
     upgrades: {},
     design: { cells: PRESETS.pebble.cells.map((c) => [...c]) },
-    sector: 0,
+    fighter: {
+      design: { cells: PRESETS.bastion.cells.map((c) => [...c]) },
+      retreat: 0.3, repairT: 0, longestShift: 0, shifts: 0,
+    },
+    planet: { index: 0, seed: (Math.random() * 1e9) | 0, removed: '' },
     cargo: {},
     cargoUnits: 0,
-    bossKills: {},
-    contracts: {},
-    planetsDestroyed: 0,
+    rates: { cubesPerSec: 0, site: null },   // measured while autopiloting, used for offline progress
+    legacy: { points: 0, spent: {}, completed: 0 },
+    records: { bestPlanetTime: 0, swarmBest: 0, swarmKills: 0 },
     blueprints: [],
-    stats: { playTime: 0, oreMined: 0, earned: 0, kills: 0, deaths: 0, bosses: 0, rocks: 0 },
+    stats: { playTime: 0, planetTime: 0, oreMined: 0, earned: 0, kills: 0, elites: 0, retreats: 0 },
     tutorial: { step: 0, done: false },
-    settings: { volume: 0.7, music: 0.5, telemetry: false, shake: 1 },
+    settings: { volume: 0.7, music: 0.5, telemetry: false, shake: 1, skin: 'industrial' },
     lastSeen: Date.now(),
   };
 }
 
 export function loadSave(key = KEY) {
   try {
-    const raw = localStorage.getItem(key);
+    let raw = localStorage.getItem(key);
+    if (!raw && key === KEY && localStorage.getItem(OLD_KEY)) {
+      // the game was rebuilt around mining a planet: start fresh, keep blueprints and settings
+      const old = JSON.parse(localStorage.getItem(OLD_KEY));
+      const s = newSave();
+      s.blueprints = Array.isArray(old.blueprints) ? old.blueprints : [];
+      s.settings = { ...s.settings, ...(old.settings || {}) };
+      s.pendingNotice = 'Space Farmer has been rebuilt around mining an entire planet, so this is a fresh start. Your saved blueprints came along.';
+      return s;
+    }
     if (!raw) return null;
     const data = JSON.parse(raw);
     const base = newSave();
-    // shallow-merge so older saves pick up new fields
     const s = { ...base, ...data };
-    s.stats = { ...base.stats, ...(data.stats || {}) };
-    s.settings = { ...base.settings, ...(data.settings || {}) };
-    s.tutorial = { ...base.tutorial, ...(data.tutorial || {}) };
+    for (const k of ['stats', 'settings', 'tutorial', 'fighter', 'planet', 'rates', 'legacy', 'records']) s[k] = { ...base[k], ...(data[k] || {}) };
     return s;
   } catch (e) {
     console.warn('Save could not be read; starting fresh.', e);

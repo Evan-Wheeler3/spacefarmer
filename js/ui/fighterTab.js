@@ -1,44 +1,52 @@
-// Hangar tab for the fighter: status, deployment settings, contract board, log.
-import { SECTORS, BOSSES, PLANETS } from '../data.js';
-import { sectorUnlocked, planetReward } from '../economy.js';
-import { el } from './dom.js';
-import { money, fmt } from '../util.js';
-import { contractCard } from './research.js';
+// Hangar tab for the escort fighter: repairs, retreat threshold, service record.
+import { FIGHTER } from '../data.js';
+import { el, toast } from './dom.js';
+import { money, fmt, fmtTime } from '../util.js';
 
 export function renderFighter(game, c) {
-  const f = game.fighter, fs = game.save.fighter, s = game.save;
-  const a = f.analysis();
-  const refresh = () => { game.persist(); game.hangar.show('fighter'); };
-  const hours = Math.max(1 / 60, (fs.stats.time || 0) / 3600);
+  const esc = game.escort, fs = game.save.fighter, s = game.save;
+  const a = esc.analysis();
+  const refresh = () => { game.persist(); game.hangar.updateCredits(); game.hangar.updateLaunch(); game.hangar.show('fighter'); };
+
+  const repairLine = el('p', {});
+  const rushBtn = el('button', { class: 'btn gold', onclick: () => { if (esc.rush()) { game.sfx('repair'); toast('Repairs rushed. Back to work.', 'good'); refresh(); } else { game.sfx('denied'); toast('Not enough credits to rush', 'bad'); } } });
+  const live = () => {
+    if (!repairLine.isConnected) return;
+    if (esc.repairing) {
+      repairLine.textContent = `In the repair bay: ${fmtTime(fs.repairT)} left. Mining waits for it.`;
+      rushBtn.textContent = `Rush repairs ${money(esc.rushCost())}`;
+      rushBtn.disabled = s.credits < esc.rushCost();
+      rushBtn.style.display = '';
+    } else {
+      repairLine.textContent = a.launchable ? 'Repaired and ready to escort.' : (a.warnings.find((w) => w.lvl === 'err')?.text || 'Design not ready.');
+      rushBtn.style.display = 'none';
+    }
+    setTimeout(live, 500);
+  };
 
   const status = el('div', { class: 'card' },
-    el('h3', {}, 'Defense Post'),
-    el('p', {}, el('b', {}, f.status() || '—')),
-    el('p', { class: 'dim small' }, 'Your fighter is a stationary platform. It works the contract board on its own while you mine, retreats for repairs before it can be destroyed, and keeps your place on the board.'),
-    el('label', { class: 'set' }, el('span', {}, 'Post sector'),
-      el('select', { class: 'inp', style: { width: 'auto' }, onchange: (e) => { fs.sector = Number(e.target.value); f.world = null; f.clearFails(); f.redeploy(); refresh(); } },
-        ...SECTORS.map((sec, i) => el('option', { value: i, selected: i === fs.sector, disabled: !sectorUnlocked(i, s) }, sec.name + (sectorUnlocked(i, s) ? '' : ' (locked)'))))),
-    el('label', { class: 'set' }, el('span', {}, 'Work contracts automatically'),
-      el('input', { type: 'checkbox', checked: fs.auto, onchange: (e) => { fs.auto = e.target.checked; if (fs.auto) f.redeploy(); else f.recall(); refresh(); } })),
+    el('h3', {}, 'Escort fighter'),
+    repairLine, rushBtn,
+    el('p', { class: 'dim small' }, 'Your fighter escorts the freighter and takes on the planet’s defense swarm. The swarm grows the longer you stay out and the deeper you dig. If the fighter drops below its retreat line, both ships warp home and mining stops until repairs finish.'),
     el('label', { class: 'set' }, el('span', {}, `Retreat below ${Math.round(fs.retreat * 100)}% hull`),
-      el('input', { type: 'range', min: 0.1, max: 0.7, step: 0.05, value: fs.retreat, oninput: (e) => { fs.retreat = Number(e.target.value); e.target.parentElement.firstChild.textContent = `Retreat below ${Math.round(fs.retreat * 100)}% hull`; }, onchange: () => game.persist() })),
-    el('div', { class: 'bp-row' },
-      el('button', { class: 'btn primary', disabled: !a.launchable, onclick: () => game.enterWatch() }, '▶ Watch / take control'),
-      el('button', { class: 'btn', onclick: () => { game.hangar.builder._role = 'fighter'; game.hangar.show('shipyard'); } }, 'Edit fighter')),
-    !a.launchable ? el('p', { class: 'bad small' }, a.warnings.find((w) => w.lvl === 'err')?.text || 'Not ready') : '');
+      el('input', { type: 'range', min: 0.1, max: 0.7, step: 0.05, value: fs.retreat,
+        oninput: (e) => { fs.retreat = Number(e.target.value); e.target.parentElement.firstChild.textContent = `Retreat below ${Math.round(fs.retreat * 100)}% hull`; }, onchange: () => game.persist() })),
+    el('p', { class: 'dim small' }, 'A higher retreat line means shorter shifts but faster, cheaper repairs.'),
+    el('div', { class: 'bp-row' }, el('button', { class: 'btn', onclick: () => { game.hangar.builder._role = 'fighter'; game.hangar.show('shipyard'); } }, 'Edit fighter in the Shipyard')));
 
-  const stats = el('div', { class: 'card' }, el('h3', {}, 'Service Record'),
+  const stats = el('div', { class: 'card' }, el('h3', {}, 'Service record'),
     el('div', { class: 'kv' },
-      ...[['Earned', money(fs.stats.earned), 'money'], ['Per hour on duty', (fs.stats.time || 0) > 120 ? money(fs.stats.earned / hours) : '—', 'money'], ['Contracts cleared', fmt(fs.stats.contracts)],
-        ['Bosses defeated', fmt(fs.stats.bosses)], ['Retreats', fmt(fs.stats.retreats)], ['Weapons', `${a.dps.toFixed(0)} dps`], ['Hull', `${Math.round(a.hp)} hp`]]
-        .map(([k, v, cls]) => el('div', {}, el('span', { class: 'dim' }, k), el('span', { class: cls || '' }, v)))),
-    el('h3', { style: { marginTop: '12px' } }, 'Log'),
-    el('div', { class: 'f-log' }, fs.log.length ? fs.log.map((l) => el('div', {}, el('span', { class: 'dim small' }, new Date(l.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '  '), l.text)) : el('div', { class: 'dim' }, 'Nothing yet. Give it a minute.')));
+      ...[['Weapons', `${a.dps.toFixed(0)} dps`], ['Hull', `${Math.round(a.hp)} hp`], ['Shields', a.shield ? `${a.shield.toFixed(0)} (+${a.shieldRegen.toFixed(0)}/s)` : 'none'],
+        ['Longest shift', fmtTime(fs.longestShift || 0)], ['Shifts flown', fmt(fs.shifts || 0)], ['Enemy ships destroyed', fmt(s.stats.kills)], ['Capital ships destroyed', fmt(s.stats.elites)]]
+        .map(([k, v]) => el('div', {}, el('span', { class: 'dim' }, k), el('span', {}, v)))),
+    el('p', { class: 'dim small' }, `Repairs take ${FIGHTER.repairBase}s plus up to ${FIGHTER.repairPerDamage}s depending on damage (Field Repairs research shortens this), and cost ${Math.round(FIGHTER.repairDiscount * 100)}% of the usual price.`));
 
-  const planet = SECTORS[fs.sector].planet ? el('div', { class: 'card' }, el('h3', {}, 'Doomsday'),
-    el('p', {}, `${PLANETS.names[s.planetsDestroyed % PLANETS.names.length]} is in range of your post. Destroying it pays `, el('span', { class: 'money' }, money(planetReward(s.planetsDestroyed, s.upgrades))), ' plus core salvage.'),
-    a.crackers ? el('p', {}, 'Watch your fighter, turn the Cracker toward the planet and hold ', el('b', {}, game.touch ? 'CRACK' : 'C'), '. Planetary defense will object.')
-      : el('p', { class: 'warn' }, 'Install a Planet Cracker on the fighter first (research Planet Cracker Schematics).')) : '';
+  const swarm = el('div', { class: 'card' }, el('h3', {}, 'The swarm'),
+    el('div', { class: 'kv' },
+      ...[['0–2 min', 'Interceptors and Raiders'], ['2–5 min', '+ Gunships and Minelayers'], ['5 min +', '+ Missile Frigates'], ['Every 4 min', 'a capital ship: Destroyer → Cruiser → Carrier → Battleship']]
+        .map(([k, v]) => el('div', {}, el('span', { class: 'dim' }, k), el('span', {}, v)))),
+    el('p', { class: 'dim small' }, 'Every ship pays a bounty; capital ships pay big. Deeper layers and later planets field tougher swarms.'));
 
-  c.append(el('div', { class: 'market' }, el('div', { class: 'col' }, status, planet), contractCard(game, fs.sector), stats));
+  c.append(el('div', { class: 'market' }, status, stats, swarm));
+  live();
 }

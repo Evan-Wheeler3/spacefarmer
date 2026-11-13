@@ -19,8 +19,7 @@ export function bar(ctx, x, y, w, h, frac, col, label, value) {
   ctx.fillText(value, x + w - 6, y + h / 2 + 0.5);
 }
 
-export function drawFlightHud(ctx, game, W, H) {
-  const ship = game.ship;
+export function drawFlightHud(ctx, game, W, H, ship = game.ship) {
   if (!ship) return;
   // keep clear of notches / the Dynamic Island (safe-area insets, CSS px)
   const sa = game.safe || { t: 0, r: 0, b: 0, l: 0 };
@@ -31,8 +30,11 @@ export function drawFlightHud(ctx, game, W, H) {
   const bw = touch ? 170 : 230, bh = touch ? 14 : 17;
   let y = H - 16 - sa.b - bh;
   const hullFrac = 1 - ship.damageFraction();
-  const rows = [
+  const fighter = ship.role === 'fighter';
+  const rows = fighter ? [
     ['HULL', hullFrac, hullFrac > 0.5 ? '#2ee6a6' : hullFrac > 0.25 ? '#ffcf5a' : '#ff5d73', Math.round(hullFrac * 100) + '%'],
+    ['POWER', ship.energyMax ? ship.energy / ship.energyMax : 0, ship.powerFactor < 0.9 ? '#ff5d73' : '#ffd60a', Math.floor(ship.energy) + ' / ' + ship.energyMax],
+  ] : [
     ['FUEL', ship.fuelMax ? ship.fuel / ship.fuelMax : 0, ship.fuel < ship.fuelMax * 0.2 ? '#ff5d73' : '#ff9f1c', Math.ceil(ship.fuel) + ' / ' + ship.fuelMax],
     ['POWER', ship.energyMax ? ship.energy / ship.energyMax : 0, ship.powerFactor < 0.9 ? '#ff5d73' : '#ffd60a', Math.floor(ship.energy) + ' / ' + ship.energyMax],
     ['CARGO', ship.cargoMax ? ship.cargoUnits / ship.cargoMax : 0, '#c9a27a', Math.floor(ship.cargoUnits) + ' / ' + ship.cargoMax],
@@ -44,12 +46,12 @@ export function drawFlightHud(ctx, game, W, H) {
     for (const r of rows) { bar(ctx, pad, y, bw, bh, r[1], r[2], r[0], r[3]); y += bh + 4; }
     y += 14;
   } else for (const r of rows) { bar(ctx, pad, y, bw, bh, r[1], r[2], r[0], r[3]); y -= bh + 5; }
-  if (ship.fuel <= 0) warnText(ctx, pad, y - 6, 'OUT OF FUEL — core RCS only. [R] recall home', game.time);
+  if (ship.fuel <= 0) warnText(ctx, pad, y - 6, 'OUT OF FUEL — core RCS only. Hold R to warp home', game.time);
   else if (ship.powerFactor < 0.5) warnText(ctx, pad, y - 6, 'BROWNOUT — systems underpowered', game.time);
-  else if (ship.cargoUnits >= ship.cargoMax - 0.01 && ship.cargoMax > 0) warnText(ctx, pad, y - 6, 'CARGO FULL — dock at the outpost to sell', game.time, '#ffcf5a');
+  else if (ship.cargoUnits >= ship.cargoMax - 0.01 && ship.cargoMax > 0) warnText(ctx, pad, y - 6, 'CARGO FULL — head back to the starship', game.time, '#ffcf5a');
 
   // ---- damage diagram (bottom-left, right of bars)
-  if (!touch) drawDamageDiagram(ctx, ship, pad + bw + 14, H - 16 - sa.b - 110, 110, 110);
+  if (!touch && fighter) drawDamageDiagram(ctx, ship, pad + bw + 14, H - 16 - sa.b - 110, 110, 110);
 
   // ---- radar (top-right)
   const rs = touch ? Math.min(120, H * 0.28) : 170;
@@ -127,15 +129,18 @@ export function drawRadar(ctx, game, x, y, size) {
     ctx.beginPath(); ctx.arc(cx + dx, cy + dy, r, 0, TAU); ctx.fill();
     ctx.globalAlpha = 1;
   };
-  for (const r of world.rocks) if (Math.abs(r.x - ship.x) < range && Math.abs(r.y - ship.y) < range) dot(r.x, r.y, hexA(ORES[r.ore].glow, 0.6), Math.max(1, r.r * k * 0.8));
+  // the planet, drawn from its live overview so mined areas show up
+  const pl = world.planet;
+  if (pl && pl.ov) {
+    const sz = pl.N * pl.cell * k;
+    ctx.globalAlpha = 0.85;
+    ctx.drawImage(pl.ov, cx + (-pl.half - ship.x) * k, cy + (-pl.half - ship.y) * k, sz, sz);
+    ctx.globalAlpha = 1;
+  }
   for (const p of world.pickups) if (Math.abs(p.x - ship.x) < range && Math.abs(p.y - ship.y) < range) dot(p.x, p.y, ORES[p.ore].glow, 1);
   for (const e of world.enemies) if (!e.dead) dot(e.x, e.y, e.boss ? '#ff3cac' : '#ff5d73', e.boss ? 5 : 2.5);
-  const pl = game.planet && game.planet.p;
-  if (pl && !pl.destroyed) dot(pl.x, pl.y, '#ff3cac', 7);
   dot(world.station.x, world.station.y, '#7df9ff', 4.5);
-  // sector edge
-  ctx.strokeStyle = 'rgba(255,80,120,0.4)';
-  ctx.beginPath(); ctx.arc(cx - ship.x * k, cy - ship.y * k, world.sector.radius * k, 0, TAU); ctx.stroke();
+  if (game.escort && game.escort.ship) dot(game.escort.ship.x, game.escort.ship.y, '#ff9fb0', 3);
   // ship arrow
   ctx.translate(cx, cy); ctx.rotate(ship.angle);
   ctx.fillStyle = '#fff';

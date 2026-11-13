@@ -1,19 +1,27 @@
-// Enemy waves, AI behaviours, bosses, hazards (mines, missiles, beams).
-import { ENEMIES, BOSSES, PHYS, ECONOMY, ORES, FLAVOR, CONTRACTS, SECTORS } from './data.js';
-import { contractWave, contractPay, nextContract, rate } from './contracts.js';
-import { analyze, Design } from './shipdesign.js';
-import { TAU, rand, clamp, angleDiff, pick, segDist2, weightedPick, hexA, money, fmt } from './util.js';
+// The planet's defense swarm: endless enemy ships that escalate the longer a
+// shift lasts, plus capital-ship elites on a schedule. They hunt your fighter.
+import { ENEMIES, BOSSES, PHYS, SWARM, FLAVOR } from './data.js';
+import { TAU, rand, clamp, angleDiff, pick, segDist2, hexA, money } from './util.js';
 import { P_GLOW, P_SPARK, P_SMOKE, P_DEBRIS } from './particles.js';
-import { toast, el } from './ui/dom.js';
 
 const C = PHYS.CELL;
-const MISSILE = { name: 'Complaint Missile', ai: 'missile', hp: 8, radius: 6, color: '#ff8fab', bounty: 0 };
+const MISSILE = { name: 'Missile', ai: 'missile', hp: 8, radius: 6, color: '#ff8fab', bounty: 0 };
 
-// ------------------------------------------------------------- sprites
+// ------------------------------------------------------------- ship art
+// Real hull silhouettes (pointing up), metal plating, panel lines, cockpit glass,
+// coloured faction stripes. Rendered once per type and cached.
+const HULLS = {
+  interceptor: [[0, -1.1], [0.15, -0.5], [0.85, 0.55], [0.8, 0.75], [0.25, 0.55], [0.2, 0.9], [-0.2, 0.9], [-0.25, 0.55], [-0.8, 0.75], [-0.85, 0.55], [-0.15, -0.5]],
+  raider: [[0, -1.25], [0.3, -0.6], [0.35, 0.2], [0.7, -0.1], [0.75, 0.5], [0.35, 0.95], [-0.35, 0.95], [-0.75, 0.5], [-0.7, -0.1], [-0.35, 0.2], [-0.3, -0.6]],
+  gunship: [[-0.45, -0.9], [0.45, -0.9], [0.6, -0.2], [1, 0.1], [1, 0.6], [0.5, 0.9], [-0.5, 0.9], [-1, 0.6], [-1, 0.1], [-0.6, -0.2]],
+  minelayer: [[-0.5, -1], [0.5, -1], [0.7, -0.4], [0.7, 0.8], [0.4, 1], [-0.4, 1], [-0.7, 0.8], [-0.7, -0.4]],
+  frigate: [[0, -1.2], [0.3, -0.8], [0.35, 0.3], [0.85, 0.5], [0.85, 0.8], [0.3, 0.75], [0.25, 1], [-0.25, 1], [-0.3, 0.75], [-0.85, 0.8], [-0.85, 0.5], [-0.35, 0.3], [-0.3, -0.8]],
+  missile: [[0, -1.3], [0.35, 0.6], [0.6, 1], [-0.6, 1], [-0.35, 0.6]],
+  capital: [[0, -1.12], [0.22, -0.88], [0.3, -0.35], [0.5, -0.15], [0.55, 0.55], [0.38, 1], [-0.38, 1], [-0.55, 0.55], [-0.5, -0.15], [-0.3, -0.35], [-0.22, -0.88]],
+};
 const spriteCache = new Map();
 function enemySprite(type, def, boss) {
-  const key = type;
-  if (spriteCache.has(key)) return spriteCache.get(key);
+  if (spriteCache.has(type)) return spriteCache.get(type);
   const R = def.radius;
   const S = Math.ceil(R * 2.8);
   const cv = document.createElement('canvas');
@@ -21,42 +29,48 @@ function enemySprite(type, def, boss) {
   const g = cv.getContext('2d');
   g.scale(2, 2);
   g.translate(S / 2, S / 2);
+  const pts = HULLS[boss ? 'capital' : type] || HULLS.interceptor;
+  const path = () => { g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x * R, y * R) : g.moveTo(x * R, y * R))); g.closePath(); };
   const col = def.color;
-  g.lineJoin = 'round';
-  const poly = (pts) => { g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x * R, y * R) : g.moveTo(x * R, y * R))); g.closePath(); };
-  const body = () => { g.fillStyle = '#1a1020'; g.fill(); g.shadowColor = col; g.shadowBlur = 10; g.strokeStyle = col; g.lineWidth = 2; g.stroke(); g.shadowBlur = 0; };
-  // all sprites face "up" (-y)
+  // plating
+  const metal = g.createLinearGradient(-R, -R, R, R);
+  metal.addColorStop(0, '#7b8496'); metal.addColorStop(0.45, '#4a5163'); metal.addColorStop(1, '#1e222c');
+  path(); g.fillStyle = metal; g.fill();
+  g.save(); path(); g.clip();
+  // panel lines
+  g.strokeStyle = 'rgba(0,0,0,0.35)'; g.lineWidth = Math.max(0.6, R / 18);
+  for (let y = -R; y < R; y += R / 3.2) { g.beginPath(); g.moveTo(-R, y); g.lineTo(R, y); g.stroke(); }
+  g.beginPath(); g.moveTo(0, -R); g.lineTo(0, R); g.stroke();
+  // faction stripes
+  g.fillStyle = hexA(col, 0.85);
+  g.fillRect(-R, R * 0.28, R * 2, R * 0.1);
+  g.fillRect(-R * 0.08, -R * 0.9, R * 0.16, R * 0.5);
+  // top light / underside shade
+  const shade = g.createLinearGradient(0, -R, 0, R);
+  shade.addColorStop(0, 'rgba(255,255,255,0.12)'); shade.addColorStop(1, 'rgba(0,0,0,0.35)');
+  g.fillStyle = shade; g.fillRect(-R, -R, R * 2, R * 2);
+  g.restore();
+  path(); g.strokeStyle = '#11141b'; g.lineWidth = Math.max(1, R / 12); g.stroke();
+  g.strokeStyle = hexA(col, 0.5); g.lineWidth = 0.8; g.stroke();
+  // cockpit glass
+  if (type !== 'missile') {
+    const cy = boss ? -R * 0.55 : -R * 0.35;
+    const gl = g.createLinearGradient(0, cy - R * 0.15, 0, cy + R * 0.15);
+    gl.addColorStop(0, '#d6f6ff'); gl.addColorStop(1, '#2a6c8a');
+    g.fillStyle = gl; g.beginPath(); g.ellipse(0, cy, R * (boss ? 0.09 : 0.13), R * (boss ? 0.14 : 0.2), 0, 0, TAU); g.fill();
+  }
+  // weapons & details
+  g.fillStyle = '#20242f';
+  if (type === 'gunship') { g.fillRect(-R * 0.82, -R * 0.75, R * 0.14, R * 0.7); g.fillRect(R * 0.68, -R * 0.75, R * 0.14, R * 0.7); }
+  if (type === 'frigate') for (const sx of [-1, 1]) for (let k = 0; k < 3; k++) { g.fillStyle = '#ff8fab'; g.fillRect(sx * R * 0.62 - R * 0.06, R * 0.5 + k * R * 0.09, R * 0.12, R * 0.05); }
+  if (type === 'minelayer') { g.fillStyle = 'rgba(0,0,0,0.5)'; g.fillRect(-R * 0.35, R * 0.55, R * 0.7, R * 0.35); }
   if (boss) {
-    const sides = { grudge: 6, auditor: 8, matriarch: 5, mildred: 10 }[type] || 7;
-    const pts = [];
-    for (let i = 0; i < sides * 2; i++) {
-      const a = (i / (sides * 2)) * TAU - Math.PI / 2;
-      const r = i % 2 ? 0.78 : 1;
-      pts.push([Math.cos(a) * r, Math.sin(a) * r]);
-    }
-    poly(pts); body();
-    g.strokeStyle = hexA(col, 0.6); g.lineWidth = 1.5;
-    g.beginPath(); g.arc(0, 0, R * 0.55, 0, TAU); g.stroke();
-    for (let i = 0; i < sides; i++) {
-      const a = (i / sides) * TAU;
-      g.beginPath(); g.moveTo(Math.cos(a) * R * 0.55, Math.sin(a) * R * 0.55); g.lineTo(Math.cos(a) * R * 0.85, Math.sin(a) * R * 0.85); g.stroke();
-    }
-    g.fillStyle = col;
-    poly([[0, -1.15], [0.12, -0.8], [-0.12, -0.8]]); g.fill();
-  } else {
-    switch (def.ai) {
-      case 'orbit': poly([[0, -1], [0.8, 0.8], [0, 0.4], [-0.8, 0.8]]); body(); break;
-      case 'ram': poly([[0, -1.2], [0.45, 0.2], [0.25, 1], [-0.25, 1], [-0.45, 0.2]]); body(); g.fillStyle = col; poly([[0, -1.2], [0.2, -0.5], [-0.2, -0.5]]); g.fill(); break;
-      case 'standoff': poly([[-0.5, -0.9], [0.5, -0.9], [1, 0], [0.5, 0.9], [-0.5, 0.9], [-1, 0]]); body(); g.fillStyle = col; g.fillRect(-R * 0.55, -R * 1.2, R * 0.2, R * 0.5); g.fillRect(R * 0.35, -R * 1.2, R * 0.2, R * 0.5); break;
-      case 'leech': g.beginPath(); g.arc(0, 0, R * 0.85, 0, TAU); body(); g.fillStyle = col; g.beginPath(); g.arc(0, -R * 0.35, R * 0.3, 0, TAU); g.fill(); break;
-      case 'mines': poly([[-0.8, -0.8], [0.8, -0.8], [1, 0.6], [0.6, 1], [-0.6, 1], [-1, 0.6]]); body(); g.strokeStyle = col; g.strokeRect(-R * 0.4, R * 0.1, R * 0.8, R * 0.6); break;
-      case 'missiles': poly([[0, -1], [0.95, -0.3], [0.7, 0.9], [-0.7, 0.9], [-0.95, -0.3]]); body(); g.fillStyle = hexA(col, 0.5); g.beginPath(); g.arc(0, 0, R * 0.4, 0, TAU); g.fill(); break;
-      case 'missile': poly([[0, -1.3], [0.6, 0.9], [-0.6, 0.9]]); g.fillStyle = col; g.fill(); break;
-      default: g.beginPath(); g.arc(0, 0, R, 0, TAU); body();
-    }
+    g.fillStyle = '#2c3242'; g.fillRect(-R * 0.16, -R * 0.2, R * 0.32, R * 0.45); // bridge tower
+    g.fillStyle = '#9fe8ff'; for (let k = 0; k < 3; k++) g.fillRect(-R * 0.1 + k * R * 0.07, -R * 0.12, R * 0.04, R * 0.03);
+    g.fillStyle = '#1a1e28'; for (let k = 0; k < 5; k++) { g.beginPath(); g.arc(0, -R * 0.75 + k * R * 0.32, R * 0.07, 0, TAU); g.fill(); }
   }
   const out = { cv, size: S };
-  spriteCache.set(key, out);
+  spriteCache.set(type, out);
   return out;
 }
 
@@ -65,100 +79,40 @@ export class EnemySystem {
     this.game = game;
     this.banner = null;
     this.boss = null;
-    this.contract = null;   // the active contract, if any
-    this.zaps = [];
     this.beams = [];
     this.mines = [];
+    this.reset();
   }
 
   get world() { return this.game.world; }
-  get sector() { return this.game.world.sector; }
   get save() { return this.game.save; }
+  target() { const s = this.game.escort && this.game.escort.ship; return s && !s.dead ? s : null; }
 
-  onLaunch() {
-    this.world.enemies.length = 0;
-    this.mines.length = 0; this.beams.length = 0;
+  // a shift starts when you launch and ends when you dock or the fighter falls
+  reset() {
+    if (this.game.world) this.game.world.enemies.length = 0;
+    this.mines = []; this.beams = [];
     this.boss = null;
-    this.contract = null;
-  }
-  // the fighter left the post (retreat or recall): the contract is not lost, just not finished
-  onDock() {
-    if (this.contract) this.failContract();
-    this.world.enemies.length = 0;
-    this.mines.length = 0; this.beams.length = 0;
-    this.boss = null;
+    this.shiftT = 0; this.pool = 0; this.spawnT = 2; this.eliteN = 0; this.nextElite = SWARM.eliteFirst;
     this.banner = null;
   }
 
-  // --------------------------------------------------------- contracts
-  board() {
-    const s = this.save;
-    s.contracts = s.contracts || {};
-    return (s.contracts[this.sector.id] = s.contracts[this.sector.id] || { k: 0, cleared: 0 });
+  // planet number and how deep you've dug make everything tougher
+  mult() {
+    const pl = this.game.world ? this.game.world.planet : null;
+    const depth = pl ? pl.percent / 100 : 0;
+    return Math.pow(SWARM.planetScale, this.save.planet.index) * (1 + (SWARM.depthScale - 1) * depth);
   }
-  next() { return nextContract(this.save, this.game.world.sectorIndex); }
-
-  // difficulty of the next contract for the current ship
-  rateNext() {
-    const n = this.next();
-    if (!n) return null;
-    const a = analyze(Design.fromJSON(this.save.design), this.save.upgrades);
-    return { n, r: rate(a, n.kind === 'wave' ? n.wave : n.foe) };
-  }
-
-  // farm: replay an already-cleared wave at repeat pay without moving the board
-  startContract(farmK = null) {
-    if (this.contract) return false;
-    let n = this.next();
-    if (farmK != null) {
-      const si = this.game.world.sectorIndex;
-      n = { kind: 'wave', k: farmK, total: this.sector.contracts, wave: contractWave(si, farmK), pay: contractPay(si, farmK, true), farm: true };
-    }
-    if (!n) return false;
-    this.contract = { ...n, sectorIndex: this.game.world.sectorIndex };
-    if (n.kind === 'boss') this.spawnBoss();
-    else this.spawnGroup(n.wave.counts, true, n.farm ? `PATROL · WAVE ${n.k + 1}` : `CONTRACT ${n.k + 1}/${n.total}`);
-    return true;
-  }
-
-  completeContract() {
-    const c = this.contract;
-    if (!c) return;
-    this.contract = null;
-    const bd = this.board();
-    const sec = this.sector;
-    let pay = c.pay;
-    if (c.kind === 'wave') {
-      if (!c.farm) {
-        bd.k++;
-        if (bd.k >= sec.contracts && !sec.boss) { bd.k = 0; bd.cleared++; }
-      }
-      this.save.credits += pay;
-      this.save.stats.earned += pay;
-      this.game.trip.bounty += pay;
-      this.save.stats.contracts = (this.save.stats.contracts || 0) + 1;
-      const n = this.next();
-      const what = c.farm ? ' (patrol)' : !n ? '' : n.kind === 'boss' ? ` · ${BOSSES[n.boss].name} is next` : ` · next: contract ${n.k + 1}`;
-      this.game.onContractDone && this.game.onContractDone(c, pay);
-      this.banner = { title: c.farm ? 'PATROL COMPLETE' : 'CONTRACT COMPLETE', text: `+${money(pay)}${what}`, t: 4, col: '#2ee6a6' };
-      this.world.floaters.add(this.game.ship.x, this.game.ship.y - 60, '+' + money(pay), '#ffd60a', 26, -40, 2);
-      this.game.sfx('sell');
-      this.game.shake(4);
-    } else {
-      // boss: board resets for repeat runs at reduced pay
-      bd.k = 0; bd.cleared++;
-    }
-    this.game.persist();
-  }
-
-  failContract() {
-    if (!this.contract) return;
-    this.contract = null;
-    for (const e of this.world.enemies) if (e.contract) e.dead = true;
+  scale() { return this.mult() * (1 + SWARM.scaleGrowth * this.shiftT / 60); }
+  ratePerMin() { return (SWARM.baseRate + SWARM.growth * this.shiftT / 60) * this.mult(); }
+  // how the swarm reads to the player
+  threatLabel() {
+    const m = this.shiftT / 60;
+    return m < 2 ? 'Light' : m < 4 ? 'Moderate' : m < 7 ? 'Heavy' : m < 10 ? 'Severe' : 'Overwhelming';
   }
 
   // ----------------------------------------------------------- spawning
-  makeEnemy(type, x, y, scale = this.sector.enemyScale) {
+  makeEnemy(type, x, y, scale = this.scale()) {
     const def = type === 'missile' ? MISSILE : ENEMIES[type];
     const e = {
       kind: 'enemy', type, def, x, y, vx: 0, vy: 0, angle: rand(0, TAU), hp: def.hp * scale, maxHp: def.hp * scale,
@@ -169,35 +123,51 @@ export class EnemySystem {
     return e;
   }
 
-  spawnGroup(counts, contract, title) {
-    const ship = this.game.ship;
-    const a = rand(0, TAU), dist = rand(950, 1250);
-    const gx = ship.x + Math.cos(a) * dist, gy = ship.y + Math.sin(a) * dist;
-    for (const t in counts) for (let i = 0; i < counts[t]; i++) {
-      const e = this.makeEnemy(t, gx + rand(-140, 140), gy + rand(-140, 140));
-      e.contract = contract;
-      e.vx = -Math.cos(a) * 120; e.vy = -Math.sin(a) * 120;
-      this.world.particles.spawn(P_GLOW, e.x, e.y, 0, 0, 0.5, 30, e.def.color);
+  spawnGroup() {
+    const tgt = this.target();
+    if (!tgt) return;
+    const min = this.shiftT / 60;
+    const types = Object.keys(ENEMIES).filter((t) => ENEMIES[t].unlockMin <= min);
+    const alive = this.world.enemies.filter((e) => !e.dead).length;
+    const counts = {};
+    let n = 0;
+    for (let guard = 0; guard < 30 && alive + n < SWARM.maxAlive; guard++) {
+      const ok = types.filter((t) => ENEMIES[t].cost <= this.pool);
+      if (!ok.length) break;
+      const t = pick(ok);
+      counts[t] = (counts[t] || 0) + 1; n++;
+      this.pool -= ENEMIES[t].cost;
     }
-    const desc = Object.entries(counts).map(([t, n]) => `${n}× ${ENEMIES[t].name}`).join(', ');
-    this.banner = { title, text: desc, t: 3.5, col: contract ? '#ff5d73' : '#ff9f8a', small: !contract };
-    this.game.sfx('warning');
+    if (!n) return;
+    // they come in from space, not through the planet
+    const d0 = Math.hypot(tgt.x, tgt.y) || 1;
+    const a = Math.atan2(tgt.y / d0, tgt.x / d0) + rand(-1.3, 1.3);
+    const dist = rand(...SWARM.spawnDist);
+    const gx = tgt.x + Math.cos(a) * dist, gy = tgt.y + Math.sin(a) * dist;
+    for (const t in counts) for (let i = 0; i < counts[t]; i++) {
+      const e = this.makeEnemy(t, gx + rand(-160, 160), gy + rand(-160, 160));
+      e.vx = -Math.cos(a) * 140; e.vy = -Math.sin(a) * 140;
+    }
   }
 
-  spawnBoss(id = this.sector.boss) {
-    const ship = this.game.ship;
+  spawnBoss(id) {
+    const tgt = this.target();
+    if (!tgt) return;
     const def = BOSSES[id];
-    const a = rand(0, TAU);
+    const sc = this.mult() * (1 + SWARM.eliteScaleGrowth * Math.floor(this.eliteN / SWARM.eliteOrder.length));
+    const d0 = Math.hypot(tgt.x, tgt.y) || 1;
+    const a = Math.atan2(tgt.y / d0, tgt.x / d0) + rand(-0.8, 0.8);
     const b = {
-      kind: 'enemy', type: id, def, boss: true, contract: true, x: ship.x + Math.cos(a) * 1100, y: ship.y + Math.sin(a) * 1100, vx: 0, vy: 0, angle: 0,
-      hp: def.hp, maxHp: def.hp, radius: def.radius, t: 0, dead: false, flash: 0, dmgScale: 1, bounty: def.bounty,
+      kind: 'enemy', type: id, def, boss: true, x: tgt.x + Math.cos(a) * 1300, y: tgt.y + Math.sin(a) * 1300, vx: 0, vy: 0, angle: 0,
+      hp: def.hp * sc, maxHp: def.hp * sc, radius: def.radius, t: 0, dead: false, flash: 0, dmgScale: 1 + (sc - 1) * 0.6, bounty: Math.round(def.bounty * sc),
       timers: [], phase: -1, charge: 0, state: 'hunt',
     };
     this.world.enemies.push(b);
     this.boss = b;
-    this.banner = { title: 'WARNING', text: `${def.name} — ${def.title}`, t: 4.5, col: '#ff3cac', boss: true };
+    this.eliteN++;
+    this.banner = { title: 'CAPITAL SHIP', text: `${def.name} — ${def.title}`, t: 4.5, col: '#ff3cac', boss: true };
     this.game.sfx('bossWarn');
-    this.game.shake(10);
+    this.game.shake(8);
   }
 
   // ------------------------------------------------------------- damage
@@ -214,76 +184,53 @@ export class EnemySystem {
     e.dead = true;
     const w = this.world;
     const big = e.boss ? 4 : e.radius / 14;
-    w.particles.burst(e.x, e.y, Math.floor(18 * big), e.def.color, 320 * Math.sqrt(big), 0.7, 2.5, P_SPARK, e.vx * 0.3, e.vy * 0.3);
-    w.particles.burst(e.x, e.y, Math.floor(8 * big), '#9a8fa8', 200, 1.6, 5, P_DEBRIS, e.vx * 0.3, e.vy * 0.3);
+    w.particles.burst(e.x, e.y, Math.floor(18 * big), '#ffd27a', 320 * Math.sqrt(big), 0.7, 2.5, P_SPARK, e.vx * 0.3, e.vy * 0.3);
+    w.particles.burst(e.x, e.y, Math.floor(10 * big), '#6b7385', 200, 1.6, 5, P_DEBRIS, e.vx * 0.3, e.vy * 0.3);
     w.particles.burst(e.x, e.y, Math.floor(4 * big), '#3a3048', 50, 1.4, e.radius * 0.8, P_SMOKE);
     w.particles.spawn(P_GLOW, e.x, e.y, 0, 0, 0.35, e.radius * 3, '#fff1d0');
     w.particles.ring(e.x, e.y, e.radius * 4, e.def.color, 0.45, 3);
     if (e.type === 'missile') { this.game.sfx('pop'); return; }
-    this.game.shake(e.boss ? 35 : Math.min(9, 2 + e.radius / 6));
+    this.game.shake(e.boss ? 30 : Math.min(6, 1 + e.radius / 8));
     this.game.sfx(e.boss ? 'bigBoom' : 'explode', e.radius);
     if (e.bounty) {
-      this.game.save.credits += e.bounty;
-      this.game.save.stats.earned += e.bounty;
-      this.game.trip.bounty += e.bounty;
-      w.floaters.add(e.x, e.y - e.radius, '+' + money(e.bounty), '#ffd60a', e.boss ? 26 : 15, -45, 1.4);
+      this.save.credits += e.bounty;
+      this.save.stats.earned += e.bounty;
+      w.floaters.add(e.x, e.y - e.radius, '+' + money(e.bounty), '#ffd60a', e.boss ? 26 : 13, -45, 1.2);
     }
-    this.game.save.stats.kills++;
-    this.game.trip.kills++;
-    // salvage
-    if (Math.random() < ECONOMY.waveDropChance || e.boss) {
-      const n = e.boss ? 30 : 1 + Math.floor(e.radius / 12);
-      // no freighter at the post to scoop it up: salvage crews sell it for you
-      let v = 0;
-      for (let i = 0; i < n; i++) v += ORES[weightedPick(this.sector.ores)].value;
-      this.game.save.credits += v; this.game.save.stats.earned += v; this.game.trip.bounty += v;
+    this.save.stats.kills++;
+    if (e.boss) {
+      this.boss = null;
+      this.save.stats.elites++;
+      for (const o of w.enemies) if (!o.dead && o.type !== 'missile' && Math.random() < 0.5) { o.state = 'flee'; o.stateT = 0; }
+      this.beams.length = 0;
+      this.game.slowmo = 1;
+      this.banner = { title: `${e.def.name.toUpperCase()} DESTROYED`, text: `${pick(FLAVOR.bossKills)}  +${money(e.bounty)}`, t: 4, col: '#ffd60a' };
+      this.game.sfx('victory');
     }
-    if (e.boss) this.bossDefeated(e);
-  }
-
-  bossDefeated(b) {
-    const s = this.save;
-    const first = !s.bossKills[b.type];
-    s.bossKills[b.type] = (s.bossKills[b.type] || 0) + 1;
-    s.stats.bosses++;
-    this.boss = null;
-    this.completeContract();
-    // the rest of the wave loses heart
-    for (const e of this.world.enemies) if (!e.dead && e.type !== 'missile') { e.state = 'flee'; e.stateT = 0; }
-    this.beams.length = 0;
-    this.game.slowmo = 1.2;
-    this.banner = { title: `${b.def.name.toUpperCase()} DEFEATED`, text: `${pick(FLAVOR.bossKills)}  +${money(b.bounty)}${first ? ' · new jump license available in Research' : ''}`, t: 5, col: '#ffd60a' };
-    this.game.sfx('victory');
-    this.game.onBossDefeated && this.game.onBossDefeated(b, first);
-    this.game.persist();
   }
 
   // ------------------------------------------------------------- update
   update(dt) {
-    const g = this.game, ship = g.ship, w = this.world;
-    if (!ship || g.state !== 'flight') return;
+    const g = this.game, ship = this.target(), w = this.world;
     if (this.banner) { this.banner.t -= dt; if (this.banner.t <= 0) this.banner = null; }
+    if (!ship || g.state === 'title' || g.state === 'hangar') return;
+    this.shiftT += dt;
+    const calm = this.save.dev && this.save.dev.peaceful;
+    if (!calm) this.pool += (this.ratePerMin() / 60) * dt;
+    this.spawnT -= dt;
+    if (this.spawnT <= 0) { this.spawnT = SWARM.spawnEvery; this.spawnGroup(); }
+    if (!calm && !this.boss && this.shiftT >= this.nextElite) { this.nextElite += SWARM.eliteEvery; this.spawnBoss(SWARM.eliteOrder[this.eliteN % SWARM.eliteOrder.length]); }
     for (const e of w.enemies) {
       if (e.dead) continue;
       e.t += dt;
       if (e.flash > 0) e.flash -= dt * 5;
       if (e.boss) this.bossAI(e, dt, ship);
       else this.ai(e, dt, ship);
-      // integrate
       e.x += e.vx * dt; e.y += e.vy * dt;
-      // shove out of rocks
-      w.hash.query(e.x, e.y, e.radius, (r) => {
-        if (r.kind !== 'rock') return;
-        const dx = e.x - r.x, dy = e.y - r.y, d = Math.hypot(dx, dy) || 1, rr = r.r * 0.9 + e.radius;
-        if (d < rr) { e.x += (dx / d) * (rr - d); e.y += (dy / d) * (rr - d); const vn = e.vx * dx / d + e.vy * dy / d; if (vn < 0) { e.vx -= vn * dx / d * 1.5; e.vy -= vn * dy / d * 1.5; } }
-      });
-      // body contact with the ship
-      if (!ship.dead) this.contact(e, ship, dt);
-      // leash: despawn stragglers far away
-      if (Math.hypot(e.x - ship.x, e.y - ship.y) > 3200 && !e.contract) e.dead = true;
+      this.contact(e, ship, dt);
+      if (Math.hypot(e.x - ship.x, e.y - ship.y) > 3600 && !e.boss) e.dead = true;
     }
     for (let i = w.enemies.length - 1; i >= 0; i--) if (w.enemies[i].dead) w.enemies.splice(i, 1);
-    if (this.contract && this.contract.kind === 'wave' && !ship.dead && !w.enemies.some((e) => e.contract && !e.dead)) this.completeContract();
     // mines
     for (let i = this.mines.length - 1; i >= 0; i--) {
       const m = this.mines[i];
@@ -306,7 +253,6 @@ export class EnemySystem {
           b.tick = (b.tick || 0) - dt;
           if (b.tick <= 0) {
             b.tick = 0.1;
-            // hit the part nearest the beam
             let best = null, bd = 1e9;
             for (const p of ship.parts) {
               if (!p.alive) continue;
@@ -314,7 +260,7 @@ export class EnemySystem {
               const d2 = segDist2(px, py, x0, y0, x1, y1);
               if (d2 < bd) { bd = d2; best = [px, py]; }
             }
-            if (best && bd < (C * 1.2) ** 2) ship.damageAt(best[0], best[1], b.damage * 0.1, w);
+            if (best && bd < (C * 1.2) ** 2) ship.damageAt(best[0], best[1], b.damage * 0.1 * (b.owner.dmgScale || 1), w);
           }
         }
       }
@@ -344,7 +290,7 @@ export class EnemySystem {
     for (let i = 0; i < count; i++) {
       const a = a0 + (count > 1 ? (i / (count - 1) - 0.5) * spreadArc : rand(-0.05, 0.05));
       this.world.spawnBullet({ x: e.x + Math.cos(a) * e.radius, y: e.y + Math.sin(a) * e.radius, vx: Math.cos(a) * spec.speed + e.vx * 0.3, vy: Math.sin(a) * spec.speed + e.vy * 0.3,
-        damage: spec.damage * (e.dmgScale || 1), owner: 'enemy', life: (spec.range || 900) / spec.speed + 0.3, color: e.def.color, radius: 3.5 });
+        damage: spec.damage * (e.dmgScale || 1), owner: 'enemy', life: (spec.range || 900) / spec.speed + 0.3, color: e.def.color, radius: 3.5, target: ship });
     }
     this.game.sfx('enemyShoot');
   }
@@ -567,7 +513,7 @@ export class EnemySystem {
         const off = rand(0, TAU);
         for (let i = 0; i < atk.count; i++) {
           const a = off + (i / atk.count) * TAU;
-          this.world.spawnBullet({ x: b.x + Math.cos(a) * b.radius, y: b.y + Math.sin(a) * b.radius, vx: Math.cos(a) * atk.speed, vy: Math.sin(a) * atk.speed, damage: atk.damage, owner: 'enemy', life: 3.5, color: b.def.color, radius: 4 });
+          this.world.spawnBullet({ x: b.x + Math.cos(a) * b.radius, y: b.y + Math.sin(a) * b.radius, vx: Math.cos(a) * atk.speed, vy: Math.sin(a) * atk.speed, damage: atk.damage * (b.dmgScale || 1), owner: 'enemy', life: 3.5, color: b.def.color, radius: 4, target: ship });
         }
         this.game.sfx('enemyShoot');
         break;
@@ -652,17 +598,17 @@ export class EnemySystem {
 
   hud(ctx, W, H) {
     const g = this.game;
-    if (g.state !== 'flight' || !g.ship) return;
+    if (g.state !== 'flight' && g.state !== 'watch') return;
     ctx.textAlign = 'center';
     const cx = W / 2;
     const b = this.boss;
     if (b) {
       const bw = Math.min(560, W * 0.6);
-      ctx.fillStyle = 'rgba(10,14,30,0.85)'; ctx.fillRect(cx - bw / 2, 26, bw, 16);
-      ctx.fillStyle = b.def.color; ctx.fillRect(cx - bw / 2 + 2, 28, (bw - 4) * Math.max(0, b.hp / b.maxHp), 12);
-      for (const p of b.def.phases) if (p.until > 0) { ctx.fillStyle = '#000'; ctx.fillRect(cx - bw / 2 + bw * p.until - 1, 26, 2, 16); }
+      ctx.fillStyle = 'rgba(10,14,30,0.85)'; ctx.fillRect(cx - bw / 2, 66, bw, 16);
+      ctx.fillStyle = b.def.color; ctx.fillRect(cx - bw / 2 + 2, 68, (bw - 4) * Math.max(0, b.hp / b.maxHp), 12);
+      for (const p of b.def.phases) if (p.until > 0) { ctx.fillStyle = '#000'; ctx.fillRect(cx - bw / 2 + bw * p.until - 1, 66, 2, 16); }
       ctx.fillStyle = '#fff'; ctx.font = '900 15px "Trebuchet MS", sans-serif';
-      ctx.fillText(b.def.name.toUpperCase(), cx, 20);
+      ctx.fillText(b.def.name.toUpperCase(), cx, 60);
     }
     if (this.banner) {
       const bn = this.banner;

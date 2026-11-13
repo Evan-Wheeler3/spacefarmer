@@ -1,5 +1,5 @@
-// Docked hangar: tabbed overlay (Shipyard, Market, Research, Star Map, Log).
-import { ORES, PARTS, SECTORS, ECONOMY, FLAVOR } from '../data.js';
+// Docked hangar aboard your starship: Planet, Shipyard, Fighter, Research, Log.
+import { ORES, PARTS, ECONOMY, FLAVOR, PLANETGEN } from '../data.js';
 import { el, toast, popEl } from './dom.js';
 import { money, fmt, fmtTime, pick } from '../util.js';
 import { Builder, refundValue } from './builder.js';
@@ -13,7 +13,7 @@ export class Hangar {
     this.tab = 'market';
     this.tabs = {
       shipyard: { label: 'Shipyard', render: (c) => this.builder.mount(c), leave: () => this.builder.unmount() },
-      market: { label: 'Market', render: (c) => this.renderMarket(c) },
+      market: { label: 'Planet', render: (c) => this.renderMarket(c) },
       log: { label: 'Log & Settings', render: (c) => this.renderLog(c) },
     };
     this.order = ['market', 'shipyard', 'log'];
@@ -34,7 +34,7 @@ export class Hangar {
     this.tabBar = el('div', { class: 'h-tabs' });
     this.launchBtn = el('button', { class: 'btn primary launch', onclick: () => this.game.launch() }, 'LAUNCH ▶');
     this.top = el('div', { class: 'h-top' },
-      el('div', { class: 'h-title' }, el('span', { class: 'logo' }, 'SPACE FARMER'), el('span', { class: 'dim' }, ' · Franchise Outpost, ' + SECTORS[this.save.sector].name)),
+      el('div', { class: 'h-title' }, el('span', { class: 'logo' }, 'SPACE FARMER'), el('span', { class: 'dim' }, ' · Starship, orbiting ' + this.game.planetLabel())),
       this.tabBar,
       el('div', { class: 'h-right' }, this.creditsEl, this.launchBtn));
     this.body = el('div', { class: 'h-body' });
@@ -82,49 +82,53 @@ export class Hangar {
 
   updateLaunch() {
     if (!this.root) return;
-    const a = analyze(Design.fromJSON(this.save.design), this.save.upgrades);
-    this.launchBtn.disabled = !a.launchable;
-    this.launchBtn.title = a.launchable ? 'Undock and fly (Enter)' : (a.warnings.find((w) => w.lvl === 'err')?.text || 'Ship not flightworthy');
+    const a = analyze(Design.fromJSON(this.save.design), this.save.upgrades, { role: 'freighter' });
+    const rep = this.game.escort.repairing;
+    this.launchBtn.disabled = !a.launchable || rep;
+    this.launchBtn.textContent = rep ? `REPAIRING ${fmtTime(this.save.fighter.repairT)}` : 'LAUNCH ▶';
+    this.launchBtn.title = rep ? 'Your fighter is in the repair bay. Mining waits for it.' : a.launchable ? 'Undock and fly (Enter)' : (a.warnings.find((w) => w.lvl === 'err')?.text || 'Ship not flightworthy');
+  }
+  // keep the launch button's repair countdown live
+  tick(dt) {
+    this._t = (this._t || 0) + dt;
+    if (this._t < 0.5) return;
+    this._t = 0;
+    const was = this._rep;
+    this._rep = this.game.escort.repairing;
+    this.updateLaunch();
+    if (was && !this._rep) { toast('Your fighter is repaired and ready.', 'good'); this.game.sfx('repair'); if (this.tab === 'fighter' || this.tab === 'market') this.refresh(); }
   }
 
-  // --------------------------------------------------------------- market
+  // ---------------------------------------------------------------- planet
   renderMarket(c) {
-    const s = this.save;
+    const s = this.save, g = this.game;
+    const pl = g.world.planet;
     const fx = upgradeEffects(s.upgrades);
-    const cargo = s.cargo || {};
-    const total = sellValue(cargo, s.upgrades);
-    const rows = Object.keys(cargo).filter((k) => cargo[k] > 0.01);
-    const sellCard = el('div', { class: 'card' },
-      el('h3', {}, 'Ore Exchange'),
-      el('p', { class: 'dim' }, fx.sellMult > 1 ? `Broker bonus: +${Math.round((fx.sellMult - 1) * 100)}%` : 'Prices set by a committee that has never seen ore.'),
-      rows.length ? el('table', { class: 'tbl' },
-        el('tr', {}, el('th', {}, 'Ore'), el('th', {}, 'Units'), el('th', {}, 'Price'), el('th', {}, 'Value')),
-        rows.map((k) => el('tr', {}, el('td', { style: { color: ORES[k].glow } }, ORES[k].name), el('td', {}, Math.floor(cargo[k])), el('td', {}, money(ORES[k].value * fx.sellMult)), el('td', { class: 'money' }, money(ORES[k].value * cargo[k] * fx.sellMult)))))
-        : el('p', { class: 'empty' }, 'Cargo hold is empty. Go point a laser at a rock.'),
-      el('button', { class: 'btn gold big-btn', disabled: !rows.length, onclick: (e) => this.sellAll(e.target) }, rows.length ? `SELL ALL  ${money(total)}` : 'Nothing to sell'));
-
-    const design = Design.fromJSON(s.design);
-    const rep = this.game.repairCost(design);
-    const wrecked = design.entries.filter((e) => e.hp === 0).length;
-    const repairCard = el('div', { class: 'card' },
-      el('h3', {}, 'Repairs'),
-      rep.total > 0
-        ? el('p', {}, `${rep.damaged} damaged part(s)${wrecked ? `, ${wrecked} wrecked` : ''}. Full repair: `, el('span', { class: 'money' }, money(rep.total)))
-        : el('p', { class: 'dim' }, 'Hull is pristine. The mechanics are bored.'),
-      el('button', { class: 'btn primary', disabled: rep.total <= 0 || s.credits <= 0, onclick: () => this.game.repair() }, s.credits >= rep.total ? 'Repair all' : 'Repair what we can afford'),
-      el('p', { class: 'dim small' }, 'Fuel is topped up automatically when you dock.'));
-
-    const lt = this.game.lastTrip;
-    const tripCard = el('div', { class: 'card' },
-      el('h3', {}, 'Last Trip'),
-      lt ? el('div', { class: 'kv' },
-        el('div', {}, el('span', { class: 'dim' }, 'Duration'), el('span', {}, fmtTime(lt.time))),
-        el('div', {}, el('span', { class: 'dim' }, 'Ore collected'), el('span', {}, Math.floor(lt.ore))),
-        el('div', {}, el('span', { class: 'dim' }, 'Kills'), el('span', {}, lt.kills)),
-        el('div', {}, el('span', { class: 'dim' }, 'Bounties'), el('span', { class: 'money' }, money(lt.bounty))),
-        el('div', {}, el('span', { class: 'dim' }, 'Refuel'), el('span', {}, money(lt.refuel))))
-        : el('p', { class: 'dim' }, pick(FLAVOR.docks)));
-    c.append(el('div', { class: 'market' }, sellCard, el('div', { class: 'col' }, repairCard, tripCard), this.game.goalCard()));
+    const pct = pl.percent;
+    // layer breakdown: how much of each layer is gone
+    const layers = PLANETGEN.layers.map((L, i) => ({ L, inner: L.to, outer: i ? PLANETGEN.layers[i - 1].to : 1 }));
+    const prog = el('div', { class: 'card planet-card' },
+      el('h3', {}, g.planetLabel()),
+      el('div', { class: 'big-pct' }, `${pct < 10 ? pct.toFixed(3) : pct.toFixed(2)}%`),
+      el('div', { class: 'dim' }, `mined · ${fmt(pl.total - pl.remaining)} of ${fmt(pl.total)} cubes`),
+      el('div', { class: 's-bar big' }, el('i', { style: { width: Math.max(0.5, pct) + '%', background: 'linear-gradient(90deg,#ffd60a,#ff3cac)' } })),
+      el('table', { class: 'tbl' },
+        el('tr', {}, el('th', {}, 'Layer'), el('th', {}, 'Ore'), el('th', {}, 'Tool')),
+        layers.map(({ L }) => el('tr', {}, el('td', {}, L.name), el('td', {}, el('span', { style: { color: ORES[L.base].glow } }, ORES[L.base].name), ' / ', el('span', { style: { color: ORES[L.vein].glow } }, ORES[L.vein].name)),
+          el('td', { class: ORES[L.base].tier > 1 ? 'warn' : 'dim' }, ['', 'Mining Laser', 'Plasma Cutter', 'Deep Bore'][ORES[L.base].tier])))),
+      el('p', { class: 'dim small' }, 'Cargo is offloaded and sold automatically whenever the freighter returns to the starship.'));
+    const prices = el('div', { class: 'card' },
+      el('h3', {}, 'Ore prices'),
+      el('p', { class: 'dim small' }, fx.sellMult * fx.yieldMult > 1 ? `Your bonuses: ×${(fx.sellMult * fx.yieldMult).toFixed(2)}` : 'Prices set by a committee that has never seen ore.'),
+      el('table', { class: 'tbl' }, el('tr', {}, el('th', {}, 'Ore'), el('th', {}, 'Per cube'), el('th', {}, 'Hardness')),
+        Object.keys(ORES).filter((k) => k !== 'core').map((k) => el('tr', {}, el('td', { style: { color: ORES[k].glow } }, ORES[k].name),
+          el('td', { class: 'money' }, money(Math.max(1, ORES[k].value * pl.valueMult * fx.sellMult * fx.yieldMult))), el('td', { class: 'dim' }, Math.round(ORES[k].hp * pl.hpMult))))));
+    const rec = el('div', { class: 'card' }, el('h3', {}, 'Records'),
+      el('div', { class: 'kv' },
+        ...[['Time on this planet', fmtTime(s.stats.planetTime)], ['Planets mined', s.legacy.completed], ['Longest fighter shift', fmtTime(s.fighter.longestShift || 0)],
+          ['Enemy ships destroyed', fmt(s.stats.kills)], ['Capital ships destroyed', fmt(s.stats.elites)], ['Cubes mined (all time)', fmt(s.stats.oreMined)]]
+          .map(([k, v]) => el('div', {}, el('span', { class: 'dim' }, k), el('span', {}, String(v))))));
+    c.append(el('div', { class: 'market' }, prog, el('div', { class: 'col' }, this.game.goalCard(), rec), prices));
   }
 
   sellAll(btn) {
@@ -152,8 +156,8 @@ export class Hangar {
     c.append(el('div', { class: 'market' },
       el('div', { class: 'card' }, el('h3', {}, 'Career'),
         el('div', { class: 'kv' },
-          ...[['Time played', fmtTime(st.playTime)], ['Credits earned', money(st.earned)], ['Ore mined', fmt(st.oreMined)], ['Rocks cracked', fmt(st.rocks)],
-            ['Pirates dissuaded', fmt(st.kills)], ['Bosses defeated', fmt(st.bosses)], ['Ships lost', fmt(st.deaths)], ['Planets destroyed', fmt(s.planetsDestroyed)]]
+          ...[['Time played', fmtTime(st.playTime)], ['Credits earned', money(st.earned)], ['Cubes mined', fmt(st.oreMined)],
+            ['Enemy ships destroyed', fmt(st.kills)], ['Capital ships destroyed', fmt(st.elites)], ['Fighter retreats', fmt(st.retreats)], ['Planets mined', fmt(s.legacy.completed)]]
             .map(([k, v]) => el('div', {}, el('span', { class: 'dim' }, k), el('span', {}, v))))),
       el('div', { class: 'card' }, el('h3', {}, 'Settings'),
         slider('Master volume', 'volume', 0, 1, 0.05), slider('Music', 'music', 0, 1, 0.05), slider('Screen shake', 'shake', 0, 1.5, 0.1),
@@ -162,8 +166,8 @@ export class Hangar {
           el('button', { class: 'btn small', onclick: () => { s.tutorial = { step: 0, done: false }; this.game.persist(); toast('Tutorial will replay on next launch', 'good'); } }, 'Replay tutorial'),
           el('button', { class: 'btn small danger', onclick: () => { if (confirm('Erase all progress? This cannot be undone.')) this.game.wipe(); } }, 'Erase save'))),
       el('div', { class: 'card' }, el('h3', {}, 'Controls'), el('div', { class: 'kv controls' },
-        ...[['W / S', 'Thrust forward / reverse'], ['A / D', 'Rotate'], ['Q / E', 'Strafe'], ['Space', 'Fire mining lasers & railguns'], ['F', 'Dock (near outpost)'],
-          ['X (hold)', 'Brake'], ['V', 'Watch your fighter'], ['R (hold)', 'Recall to outpost'], ['C (hold)', 'Charge Planet Cracker'], ['T', 'Toggle flight assist'], ['Wheel', 'Zoom'], ['Esc', 'Pause'], ['Gamepad', 'Sticks fly, RT/A fire, LT brake, LB/RB strafe, X contract, Y crack, B dock']]
+        ...[['W / S', 'Thrust forward / reverse'], ['A / D', 'Rotate'], ['Q / E', 'Strafe'], ['Space', 'Fire mining tools'], ['F', 'Dock at the starship'],
+          ['X (hold)', 'Brake'], ['V', 'Watch your fighter'], ['P', 'Whole-planet view'], ['R (hold)', 'Warp home'], ['T', 'Toggle flight assist'], ['Wheel', 'Zoom'], ['Esc', 'Pause (settings live here too)'], ['Idle', 'Autopilot mines after 5s without input'], ['Gamepad', 'Sticks fly, RT/A fire, LT brake, LB/RB strafe, B dock']]
           .map(([k, v]) => el('div', {}, el('span', { class: 'key' }, k), el('span', {}, v)))))));
   }
 }

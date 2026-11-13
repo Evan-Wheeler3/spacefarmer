@@ -19,7 +19,7 @@ procedural and all audio is synthesized with WebAudio.
 - **How to run:** `node tools/serve.mjs` → <http://localhost:8000> (any static server works; ES modules
   don't load from `file://` in Chromium). It also prints a LAN address for phones. GitHub Pages works as-is
   (there's a `.nojekyll`).
-- **The planet is the game.** Planet 1 has ~24k cubes in four layers: Crust, Mantle, Deep Mantle, Core.
+- **The planet is the game.** Planet 1 has ~22k cubes in four layers: Crust, Mantle, Deep Mantle, Core.
   Deeper rock is harder and worth more. Tools come in tiers: the Mining Laser (tier 1) handles Crust and
   Mantle, the Plasma Cutter (tier 2) the Deep Mantle, the Deep Bore (tier 3) the Core. A too-weak tool
   still chips at harder rock, at 4% speed. The surface (ocean, land, ice) is paint over the rock.
@@ -45,7 +45,8 @@ procedural and all audio is synthesized with WebAudio.
   (Endless), and **Swarm Survival** appears on the title screen.
 - **Pacing target:** about 6–8 h of active play for the 3-planet campaign. Measured with the pacing bot
   (below), which plays the real game with a simple cheapest-first strategy and preset ships only. It
-  currently takes roughly 3–5 h / 2½–3 h / 3–4½ h. A player who builds their own ships beats it.
+  takes about 2½ h / 2¼ h / 3¼ h, ≈8 h in total, very consistently. A player who buys smarter and
+  builds their own ships beats it. Past 96.5% the core collapses, so you never hunt the last specks of dust.
 - **Fuel** refills (for a small fee) whenever you're home. Run dry and the starship tows you home.
   Hold **R** to warp home any time.
 - **Autosave** to `localStorage` every 15 s, on dock, on purchase and when the tab is hidden. Saves from

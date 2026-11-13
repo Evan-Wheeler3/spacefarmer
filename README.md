@@ -159,6 +159,7 @@ node tools/bot.mjs                   # pacing bot: plays the real game headless 
 node tools/bot.mjs --planets 1       # ...or stop after one planet / --hours 2 / --shot (screenshot at the end)
 node tools/check-presets.mjs         # validates every preset and prints its stats
 node tools/screenshots.mjs           # key screens at 1280×720, 1920×1080, 1024×768 → docs/screens
+node tools/bump-version.mjs          # stamp js/version.js (run before each commit; shown in Settings)
 ```
 
 The bot drives the actual game in headless Chromium, stepping the simulation directly with no rendering

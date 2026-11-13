@@ -22,6 +22,7 @@ import { EnemySystem } from './enemies.js';
 import { Escort } from './fighter.js';
 import { Autopilot } from './autopilot.js';
 import { renderLegacy } from './ui/legacy.js';
+import { versionLine } from './ui/version.js';
 import { renderResearch, goalCard } from './ui/research.js';
 import { renderFighter } from './ui/fighterTab.js';
 import { Tutorial } from './ui/tutorial.js';
@@ -195,6 +196,7 @@ export class Game {
         has && this.save.legacy.completed >= MAIN_PLANETS ? el('button', { class: 'btn big-btn danger', title: 'Pilot your fighter against a swarm that never stops growing. Your ships and credits are untouched.', onclick: () => this.startSurvival() }, 'SWARM SURVIVAL') : '',
         el('button', { class: 'btn big-btn', title: 'Separate save slot with everything unlocked, cheats and spawn tools. Never touches your real progress.', onclick: () => this.startSandbox() }, 'SANDBOX')),
       has && !this.save.pendingNotice ? el('div', { class: 'dim' }, `${money(this.save.credits)} · ${planetName(this.save.planet.index)} · ${this.save.legacy.completed} planet(s) mined`) : '',
+      versionLine(),
       el('div', { class: 'title-help dim' }, this.touch ? 'Left thumb: fly · FIRE: mine · leave the controls and the autopilot takes over' : 'W/S thrust · A/D turn · Q/E strafe · Space mine · F dock · V watch fighter · P planet view · Esc pause'));
     this.overlay = t;
     this.ui.append(t);
@@ -607,7 +609,7 @@ export class Game {
         el('div', { class: 'pause-col card' }, el('h3', {}, 'Settings'),
           slider('Master volume', 'volume', 0, 1, 0.05), slider('Music', 'music', 0, 1, 0.05), slider('Screen shake', 'shake', 0, 1.5, 0.1),
           check('Physics telemetry (F3)', 'telemetry'),
-          this.skinPicker())),
+          this.skinPicker(), versionLine())),
       el('div', { class: 'dim' }, 'Progress autosaves continuously.'));
     return p;
   }

@@ -1,4 +1,5 @@
 // Docked hangar aboard your starship: Planet, Shipyard, Fighter, Research, Log.
+import { versionLine } from './version.js';
 import { ORES, PARTS, ECONOMY, FLAVOR, PLANETGEN } from '../data.js';
 import { el, toast, popEl } from './dom.js';
 import { money, fmt, fmtTime, pick } from '../util.js';
@@ -165,7 +166,8 @@ export class Hangar {
         this.game.skinPicker(),
         el('div', { class: 'bp-row' },
           el('button', { class: 'btn small', onclick: () => { s.tutorial = { step: 0, done: false }; this.game.persist(); toast('Tutorial will replay on next launch', 'good'); } }, 'Replay tutorial'),
-          el('button', { class: 'btn small danger', onclick: () => { if (confirm('Erase all progress? This cannot be undone.')) this.game.wipe(); } }, 'Erase save'))),
+          el('button', { class: 'btn small danger', onclick: () => { if (confirm('Erase all progress? This cannot be undone.')) this.game.wipe(); } }, 'Erase save')),
+        versionLine()),
       el('div', { class: 'card' }, el('h3', {}, 'Controls'), el('div', { class: 'kv controls' },
         ...[['W / S', 'Thrust forward / reverse'], ['A / D', 'Rotate'], ['Q / E', 'Strafe'], ['Space', 'Fire mining tools'], ['F', 'Dock at the starship'],
           ['X (hold)', 'Brake'], ['V', 'Watch your fighter'], ['P', 'Whole-planet view'], ['R (hold)', 'Warp home'], ['T', 'Toggle flight assist'], ['Wheel', 'Zoom'], ['Esc', 'Pause (settings live here too)'], ['Idle', 'Autopilot mines after 5s without input'], ['Gamepad', 'Sticks fly, RT/A fire, LT brake, LB/RB strafe, B dock']]

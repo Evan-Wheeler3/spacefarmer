@@ -343,3 +343,6 @@ body.watching .chips { top: calc(52px + env(safe-area-inset-top)); }
 .legacy-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
 .legacy-pts { color: #ffd60a; font-weight: 900; font-size: 1.4em; }
 .legacy-cost { color: #ffd60a; font-weight: 800; }
+.version { margin-top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.title .version { justify-content: center; margin-top: 6px; }
+.version-new { color: #ffd60a; font-weight: 700; }

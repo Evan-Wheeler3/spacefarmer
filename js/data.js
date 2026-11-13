@@ -275,7 +275,8 @@ export const SWARM = {
 // Your fighter escorts the freighter. When it falls, both warp home and all
 // mining stops until repairs finish.
 export const FIGHTER = {
-  escortDist: 230,        // how far it holds station from the freighter (on the space side)
+  escortDist: 2400,       // its picket line: this far out from the freighter, on the space side (off-screen)
+  picketDrift: 0.35,      // ...swinging slowly side to side along the line (radians)
   repairBase: 20,         // seconds in the repair bay, plus...
   repairPerDamage: 100,   // ...this many seconds at 100% damage
   repairDiscount: 0.4,    // repairs cost this share of the normal price

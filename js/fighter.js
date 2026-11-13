@@ -36,13 +36,12 @@ export class Escort {
 
   hull() { return this.ship ? 1 - this.ship.damageFraction() : 1; }
 
-  // where to hold station: on the space side of the freighter, a little ahead of it
+  // where to hold station: a picket line far out on the space side of the freighter,
+  // so the swarm is met well before it gets anywhere near the mining
   station(fr, world) {
-    const d = Math.hypot(fr.x, fr.y) || 1;
-    const ox = fr.x / d, oy = fr.y / d; // away from the planet
-    const px = -oy * this.side, py = ox * this.side;
+    const a = Math.atan2(fr.y, fr.x) + Math.sin(world.time * 0.07) * FIGHTER.picketDrift * this.side;
     const D = FIGHTER.escortDist + fr.radius;
-    return [fr.x + ox * D * 0.85 + px * D * 0.5, fr.y + oy * D * 0.85 + py * D * 0.5];
+    return [fr.x + Math.cos(a) * D, fr.y + Math.sin(a) * D];
   }
 
   update(dt, fr, world) {
@@ -55,7 +54,7 @@ export class Escort {
     const nvx = dx * 3 + fr.vx * 0.8, nvy = dy * 3 + fr.vy * 0.8;
     s.vx += (nvx - s.vx) * k; s.vy += (nvy - s.vy) * k;
     const sp = Math.hypot(s.vx, s.vy);
-    if (sp > 650) { s.vx *= 650 / sp; s.vy *= 650 / sp; }
+    if (sp > 1600) { s.vx *= 1600 / sp; s.vy *= 1600 / sp; }
     s.input = s.dead ? { thrust: 0, strafe: 0, turn: 0 } : this.manual ? this.manualInput() : this.ai(world);
     const keepVx = s.vx, keepVy = s.vy;
     s.update(dt, world);

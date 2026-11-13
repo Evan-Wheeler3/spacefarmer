@@ -220,7 +220,11 @@ export class World {
       const d = Math.hypot(ship.x, ship.y);
       if (d > this.radius) { ship.vx -= (ship.x / d) * PHYS.boundaryPush * dt; ship.vy -= (ship.y / d) * PHYS.boundaryPush * dt; }
     }
+    // bullets are all combat (the freighter is unarmed): muffle them when it's off-screen
+    const g = this.game, prevFar = g.farCombat;
+    g.farCombat = !!g.farCombatView;
     this.updateBullets(dt);
+    g.farCombat = prevFar;
     this.particles.update(dt);
     this.floaters.update(dt);
   }

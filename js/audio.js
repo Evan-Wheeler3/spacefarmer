@@ -168,7 +168,7 @@ export class Audio {
     let target = 0;
     const fs = game.escort && game.escort.ship;
     if ((game.state === 'flight' || game.state === 'watch') && fs && game.world) {
-      for (const e of game.world.enemies) if (!e.dead && Math.hypot(e.x - fs.x, e.y - fs.y) < 1300) { target = e.boss ? 1 : Math.max(target, game.state === 'watch' ? 0.6 : 0.35); }
+      for (const e of game.world.enemies) if (!e.dead && Math.hypot(e.x - fs.x, e.y - fs.y) < 1300) { target = game.state === 'watch' ? (e.boss ? 1 : Math.max(target, 0.6)) : Math.max(target, e.boss ? 0.4 : 0.15); }
     }
     this.intensity += (target - this.intensity) * 0.02;
   }

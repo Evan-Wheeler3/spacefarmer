@@ -601,7 +601,8 @@ export class EnemySystem {
     if (g.state !== 'flight' && g.state !== 'watch') return;
     ctx.textAlign = 'center';
     const cx = W / 2;
-    const b = this.boss;
+    const far = g.state === 'flight'; // freighter view: the battle is off-screen, the chip and pointer cover it
+    const b = far ? null : this.boss;
     if (b) {
       const bw = Math.min(560, W * 0.6);
       ctx.fillStyle = 'rgba(10,14,30,0.85)'; ctx.fillRect(cx - bw / 2, 66, bw, 16);
@@ -626,7 +627,7 @@ export class EnemySystem {
       ctx.globalAlpha = 1;
     }
     // off-screen enemy pointers
-    for (const e of g.world.enemies) {
+    if (!far) for (const e of g.world.enemies) {
       if (e.dead || e.type === 'missile') continue;
       const [sx, sy] = g.cam.toScreen(e.x, e.y);
       if (sx > 0 && sx < W && sy > 0 && sy < H) continue;

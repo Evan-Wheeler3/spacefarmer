@@ -15,6 +15,8 @@ import { Dev } from './ui/dev.js';
 import { TouchControls } from './ui/touch.js';
 import { sellValue, idleWindow, upgradeEffects } from './economy.js';
 import { money, fmt, fmtTime, pick, clamp, TAU } from './util.js';
+
+const FAR_MUTED = new Set(['rail', 'shoot', 'shield', 'partLost', 'bigBoom', 'hit', 'pop', 'explode', 'enemyShoot', 'missile', 'charge', 'steal', 'bump']);
 import { P_GLOW, P_SPARK } from './particles.js';
 import { EnemySystem } from './enemies.js';
 import { Escort } from './fighter.js';
@@ -99,8 +101,15 @@ export class Game {
     this.cam.safeX = Math.max(this.safe.l, this.safe.r);
   }
 
-  shake(a) { this.cam.shake(a * (this.settings.shake ?? 1)); }
-  sfx(name, p) { if (this.audio) this.audio.play(name, p); }
+  shake(a) { if (!this.farCombat) this.cam.shake(a * (this.settings.shake ?? 1)); }
+  sfx(name, p) {
+    if (!this.audio) return;
+    // in the freighter view the fight is happening far away: you only hear the big moments
+    if (this.farCombat && FAR_MUTED.has(name)) return;
+    this.audio.play(name, p);
+  }
+  // true while the fighter's battle runs off-screen (freighter view)
+  get farCombatView() { return this.state === 'flight' && !this.planetView; }
   applySettings() { this.audio && this.audio.setVolume(this.settings.volume, this.settings.music); this.persist(); }
 
   // ------------------------------------------------------------- save
@@ -445,9 +454,10 @@ export class Game {
     const txt = `🌍 ${pct < 10 ? pct.toFixed(3) : pct.toFixed(2)}% mined`;
     if (this.chipEls.pc.textContent !== txt) this.chipEls.pc.textContent = txt;
     const f = this.escort;
-    const ftxt = f.ship ? `⚔ Fighter ${Math.round(f.hull() * 100)}% · ${this.enemySystem.threatLabel()} swarm` : '⚔ —';
+    const ftxt = f.ship ? `⚔ Fighter ${Math.round(f.hull() * 100)}% · ${this.enemySystem.boss ? 'CAPITAL SHIP' : this.enemySystem.threatLabel() + ' swarm'}` : '⚔ —';
     if (this.chipEls.fc.textContent !== ftxt) this.chipEls.fc.textContent = ftxt;
-    this.chipEls.fc.classList.toggle('alert', f.hull() < this.save.fighter.retreat + 0.15);
+    this.chipEls.fc.classList.toggle('alert', f.hull() < this.save.fighter.retreat + 0.15 || !!this.enemySystem.boss);
+    this.chips.style.display = this.state === 'watch' ? 'none' : '';
   }
 
   // ------------------------------------------------------------ loop
@@ -596,9 +606,11 @@ export class Game {
     let sdt = dt;
     if (this.slowmo > 0) { this.slowmo -= dt; sdt = dt * 0.3; }
     ship.update(sdt, this.world);
+    this.farCombat = this.farCombatView;
     this.escort.update(sdt, ship, this.world);
-    if (this.state !== 'flight' && this.state !== 'watch') return; // the fighter fell this frame
+    if (this.state !== 'flight' && this.state !== 'watch') { this.farCombat = false; return; } // the fighter fell this frame
     this.enemySystem.update(sdt);
+    this.farCombat = false;
     this.world.update(sdt, ship);
     for (const s of this.systems) s.update && s.update(sdt);
     if (this.state !== 'flight' && this.state !== 'watch') return;
@@ -645,7 +657,10 @@ export class Game {
       drawShip(ctx, this.ship, this.time, this.settings.skin);
       world.drawMagnet(ctx, this.ship, this.time);
       const f = this.escort.ship;
-      if (f && !f.dead) { drawShip(ctx, f, this.time, this.settings.skin); world.drawShield(ctx, f); }
+      if (f && !f.dead) {
+        const v = cam.view(f.radius + 60);
+        if (f.x > v.x0 && f.x < v.x1 && f.y > v.y0 && f.y < v.y1) { drawShip(ctx, f, this.time, this.settings.skin); world.drawShield(ctx, f); }
+      }
       this.enemySystem.draw(ctx, cam);
     }
     world.drawBullets(ctx, cam);
@@ -675,7 +690,35 @@ export class Game {
     mark(this.world.station.x, this.world.station.y, '#7df9ff', 'STARSHIP');
   }
 
+  // freighter view: an arrow on the screen edge toward the (off-screen) fighter
+  drawFighterPointer(ctx) {
+    const f = this.escort.ship, cam = this.cam;
+    if (!f || f.dead || this.state !== 'flight' || this.planetView) return;
+    const sx = (f.x - cam.x) * cam.zoom, sy = (f.y - cam.y) * cam.zoom;
+    const sa = this.safe, m = 46;
+    const hw = this.W / 2 - m, hh = this.H / 2 - m;
+    if (Math.abs(sx) < hw && Math.abs(sy) < hh) return;
+    const k = Math.min(hw / Math.abs(sx || 1e-6), hh / Math.abs(sy || 1e-6));
+    const x = clamp(this.W / 2 + sx * k, m + sa.l, this.W - m - sa.r), y = clamp(this.H / 2 + sy * k, 110 + sa.t, this.H - 90 - sa.b);
+    const a = Math.atan2(sy, sx), hull = this.escort.hull();
+    let busy = false;
+    for (const e of this.world.enemies) if (!e.dead && Math.abs(e.x - f.x) < 1000 && Math.abs(e.y - f.y) < 1000) { busy = true; break; }
+    const col = hull < 0.5 ? '#ff5d73' : busy ? '#ffb347' : '#ff4d6d';
+    ctx.save(); ctx.translate(x, y);
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = 'rgba(8,12,24,0.7)'; ctx.beginPath(); ctx.arc(0, 0, 20, 0, TAU); ctx.fill();
+    ctx.strokeStyle = col; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0, 0, 20, -Math.PI / 2, -Math.PI / 2 + TAU * hull); ctx.stroke();
+    ctx.rotate(a); ctx.fillStyle = col;
+    ctx.beginPath(); ctx.moveTo(30, 0); ctx.lineTo(22, -6); ctx.lineTo(22, 6); ctx.fill();
+    ctx.rotate(-a);
+    ctx.font = '700 10px "Trebuchet MS", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(busy ? '⚔' : 'F', 0, 1);
+    ctx.restore();
+  }
+
   drawHud(ctx) {
+    this.drawFighterPointer(ctx);
     const ship = this.ship, sa = this.safe;
     drawFlightHud(ctx, this, this.W, this.H, this.state === 'watch' && this.escort.ship ? this.escort.ship : ship);
     edgeArrow(ctx, this.cam, this.world.station.x, this.world.station.y, '#7df9ff', 'STARSHIP');

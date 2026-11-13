@@ -292,12 +292,25 @@ export const IDLE = {
   windows: [120, 300, 600, 1200, 2400, 4800, 9600, 14400], // window by Autopilot research level
 };
 
+// Planet looks. The surface skin is paint only: underneath it's the same rock
+// and ore. biomes: deep water, shallows, lowland, highland, dry, polar cap.
+// sea: share of the surface under water. tilt: axial tilt (radians) for the caps.
 export const PLANET_THEMES = [
-  { name: 'Kessar Prime', bg: ['#0a0f24', '#1b1140'] },
-  { name: 'Vorn', bg: ['#160b0b', '#3a1a12'] },
-  { name: 'Oruleth', bg: ['#04141c', '#0b3a4a'] },
-  { name: 'Hallow', bg: ['#0c0c14', '#2b2340'] },
-  { name: 'Gorvox', bg: ['#160812', '#40142a'] },
+  { name: 'Kessar Prime', bg: ['#0a0f24', '#1b1140'], sea: 0.42, cap: 0.9, tilt: 0.55,
+    biomes: ['#1d4f8f', '#2f7fb8', '#4f8a3a', '#2e6531', '#c2a35d', '#e9f2f8'],
+    atmo: '120,175,255', clouds: '255,255,255', cloudCover: 0.5 },
+  { name: 'Vorn', bg: ['#160b0b', '#3a1a12'], sea: 0.12, cap: 0.95, tilt: 0.3,
+    biomes: ['#5c1d12', '#8a3218', '#b2582f', '#6e2e20', '#d08a4c', '#e8c7a6'],
+    atmo: '255,140,90', clouds: '235,190,150', cloudCover: 0.32 },
+  { name: 'Oruleth', bg: ['#04141c', '#0b3a4a'], sea: 0.66, cap: 0.88, tilt: 0.8,
+    biomes: ['#0d4560', '#1b8790', '#5fb36a', '#3d8a52', '#d7c98a', '#e4f6fa'],
+    atmo: '90,225,235', clouds: '245,255,255', cloudCover: 0.6 },
+  { name: 'Hallow', bg: ['#0c0c14', '#2b2340'], sea: 0.25, cap: 0.6, tilt: 0.2,
+    biomes: ['#2b3f6b', '#4f6f9f', '#9fc0da', '#7a91b4', '#c9d6e6', '#f2f8ff'],
+    atmo: '185,205,255', clouds: '240,245,255', cloudCover: 0.3 },
+  { name: 'Gorvox', bg: ['#160812', '#40142a'], sea: 0.35, cap: 0.93, tilt: 0.65,
+    biomes: ['#3f1653', '#6b2d7a', '#3d8b5a', '#28603f', '#c4d650', '#e7d9f2'],
+    atmo: '200,120,255', clouds: '235,240,170', cloudCover: 0.5 },
 ];
 export const MAIN_PLANETS = 3;  // finishing this many planets completes the main game
 
